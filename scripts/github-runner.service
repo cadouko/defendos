@@ -1,0 +1,20 @@
+[Unit]
+Description=GitHub Actions Runner (DefendOS)
+After=network.target
+
+[Service]
+Type=notify
+User=runner
+Group=runner
+WorkingDirectory=/opt/github-runner
+ExecStart=/opt/github-runner/run.sh
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=300
+
+# Allow mkarchiso to mount filesystems
+CapabilityBoundingSet=CAP_SYS_ADMIN
+AmbientCapabilities=CAP_SYS_ADMIN
+
+[Install]
+WantedBy=multi-user.target

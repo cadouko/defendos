@@ -54,33 +54,30 @@ jobs:
           python3 -m py_compile iso/defendos/airootfs/usr/local/bin/tool-launcher
           echo "✅ Syntaxe Python OK"
 
-  # ── Build ISO (optionnel – sur Arch uniquement) ────────────
+  # ── Build ISO (sur runner Arch Linux self-hosted) ──────────
   build-iso:
     name: Build ISO
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, arch]
     if: |
       github.event_name == 'workflow_dispatch' && github.event.inputs.build_iso == 'true' ||
       startsWith(github.ref, 'refs/tags/v')
     needs: lint
-    container:
-      image: archlinux:latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Arch + BlackArch
+      - name: Install build dependencies
         run: |
-          pacman -Sy --noconfirm archiso gnupg grub
-          yes | bash <(curl -fsSL https://blackarch.org/strap.sh)
+          sudo pacman -Sy --noconfirm archiso grub edk2-shell
 
       - name: Build ISO
         run: |
           mkdir -p build/{iso,work}
-          mkarchiso -v \
+          sudo mkarchiso -v \
             -w build/work \
             -o build/iso \
             iso/defendos/
-        timeout-minutes: 90
+        timeout-minutes: 120
 
       - name: Generate checksums
         run: |
