@@ -1,0 +1,92 @@
+#!/usr/bin/env python3
+"""
+DefendOS – CLI Tool Launcher (rofi/fzf-style terminal selector)
+Usage : tool-launcher
+"""
+
+import subprocess
+import sys
+import os
+
+TOOLS = [
+    # (catégorie, nom, commande)
+    ("Réseau",      "nmap – Scanner",          "nmap"),
+    ("Réseau",      "masscan – Scanner rapide", "masscan"),
+    ("Réseau",      "rustscan – Scanner ultra-rapide", "rustscan"),
+    ("Réseau",      "bettercap – MitM / réseau","bettercap"),
+    ("Réseau",      "mitmproxy – Proxy HTTP",  "mitmproxy"),
+    ("Web",         "nuclei – Scanner vuln",   "nuclei -h"),
+    ("Web",         "ffuf – Fuzzer web",       "ffuf -h"),
+    ("Web",         "sqlmap – SQLi auto",      "sqlmap --wizard"),
+    ("Web",         "gobuster – Dir brute",    "gobuster -h"),
+    ("Web",         "nikto – Scanner web",     "nikto -h"),
+    ("Exploit",     "metasploit – Framework",  "msfconsole -q"),
+    ("Exploit",     "searchsploit – EDB",      "searchsploit"),
+    ("Password",    "hashcat – Cracking GPU",  "hashcat -h"),
+    ("Password",    "john – Cracking CPU",     "john --help"),
+    ("Password",    "hydra – Brute-force",     "hydra -h"),
+    ("Wireless",    "aircrack-ng",             "aircrack-ng --help"),
+    ("Wireless",    "hcxtools",                "hcxdumptool --help"),
+    ("Défensif",    "lynis – Audit système",   "lynis audit system"),
+    ("Défensif",    "suricata – IDS/IPS",      "suricata --help"),
+    ("Défensif",    "zeek – NSM",              "zeek --help"),
+    ("Défensif",    "fail2ban – Status",       "fail2ban-client status"),
+    ("Défensif",    "clamav – Scan",           "clamscan --help"),
+    ("Défensif",    "rkhunter – Rootkits",     "rkhunter --check"),
+    ("Forensics",   "volatility3 – Mémoire",   "vol --help"),
+    ("Forensics",   "binwalk – Firmware",      "binwalk --help"),
+    ("Forensics",   "foremost – Récupération", "foremost --help"),
+    ("Forensics",   "strings – Chaînes",       "strings --help"),
+    ("Analyse",     "wireshark – Capture",     "wireshark"),
+    ("Analyse",     "tcpdump – Capture CLI",   "tcpdump --help"),
+    ("Analyse",     "tshark – Wireshark CLI",  "tshark --help"),
+]
+
+def main():
+    # Construire la liste pour fzf
+    entries = [f"[{cat}]  {name}" for cat, name, cmd in TOOLS]
+    entries_str = "\n".join(entries)
+
+    # Vérifier si fzf est disponible
+    if shutil_which("fzf"):
+        result = subprocess.run(
+            ["fzf", "--ansi", "--prompt=DefendOS> ",
+             "--header=Choisir un outil (CTRL-C pour quitter)",
+             "--height=60%", "--layout=reverse", "--border"],
+            input=entries_str, capture_output=True, text=True
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            sys.exit(0)
+        chosen = result.stdout.strip()
+    else:
+        # Fallback menu numéroté
+        print("\n\033[1;36m  DefendOS – Tool Launcher\033[0m")
+        print("  " + "─" * 40)
+        for i, (cat, name, _) in enumerate(TOOLS, 1):
+            print(f"  {i:2}. \033[90m[{cat}]\033[0m {name}")
+        print("\n  0. Quitter")
+        try:
+            choice = input("\n  Choix : ").strip()
+            if choice == "0" or not choice:
+                sys.exit(0)
+            idx = int(choice) - 1
+            chosen = entries[idx]
+        except (ValueError, IndexError, KeyboardInterrupt):
+            sys.exit(0)
+
+    # Retrouver la commande
+    for i, entry in enumerate(entries):
+        if entry == chosen:
+            cat, name, cmd = TOOLS[i]
+            print(f"\n\033[1;32m[+]\033[0m Lancement : {cmd}\n")
+            os.execlp("bash", "bash", "-c", cmd)
+            break
+
+
+def shutil_which(name):
+    import shutil
+    return shutil.which(name) is not None
+
+
+if __name__ == "__main__":
+    main()

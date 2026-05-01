@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=DefendOS Launcher
+GenericName=Cybersecurity Tool Launcher
+Comment=Accès rapide aux outils de sécurité DefendOS
+Exec=defendos-gui
+Icon=/opt/defendos/icon.png
+Terminal=false
+Categories=Security;Network;System;
+Keywords=security;pentest;hacking;defender;nmap;metasploit;
+StartupNotify=true
+StartupWMClass=defendos-gui

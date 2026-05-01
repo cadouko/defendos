@@ -1,0 +1,132 @@
+<!--
+  DefendOS – Configuration Wazuh Agent (exemple)
+  Copier vers /var/ossec/etc/ossec.conf et adapter
+  Documentation : https://documentation.wazuh.com
+-->
+<ossec_config>
+
+  <!-- ── Connexion au manager ──────────────────────────────── -->
+  <client>
+    <server>
+      <address>WAZUH_MANAGER_IP</address>
+      <port>1514</port>
+      <protocol>tcp</protocol>
+    </server>
+    <config-profile>arch, arch22</config-profile>
+    <notify_time>10</notify_time>
+    <time-reconnect>60</time-reconnect>
+    <auto_restart>yes</auto_restart>
+    <crypto_method>aes</crypto_method>
+  </client>
+
+  <!-- ── Buffer ────────────────────────────────────────────── -->
+  <client_buffer>
+    <disabled>no</disabled>
+    <queue_size>5000</queue_size>
+    <events_per_second>500</events_per_second>
+  </client_buffer>
+
+  <!-- ── Journaux à surveiller ─────────────────────────────── -->
+  <localfile>
+    <log_format>syslog</log_format>
+    <location>/var/log/syslog</location>
+  </localfile>
+
+  <localfile>
+    <log_format>syslog</log_format>
+    <location>/var/log/auth.log</location>
+  </localfile>
+
+  <localfile>
+    <log_format>syslog</log_format>
+    <location>/var/log/messages</location>
+  </localfile>
+
+  <localfile>
+    <log_format>syslog</log_format>
+    <location>/var/log/secure</location>
+  </localfile>
+
+  <localfile>
+    <log_format>command</log_format>
+    <command>df -P</command>
+    <frequency>360</frequency>
+  </localfile>
+
+  <localfile>
+    <log_format>full_command</log_format>
+    <command>netstat -tulpn | sed 's/\([[:alnum:]]\+\)\ \+[[:digit:]]\+\ \+[[:digit:]]\+\ \+\(.*\):\([[:digit:]]*\)\ \+\([0-9\.\:\*]\+\).\+\ \([[:digit:]]*\/[[:alnum:]_\-]*\).*/\1 \2 == \3 == \4 \5/' | sort -k 4 -g | sed 's/ == \(.*\) == / \1 /' | sed 1,2d</command>
+    <alias>netstat listening ports</alias>
+    <frequency>360</frequency>
+  </localfile>
+
+  <!-- ── Suricata EVE JSON ──────────────────────────────────── -->
+  <localfile>
+    <log_format>json</log_format>
+    <location>/var/log/suricata/eve.json</location>
+  </localfile>
+
+  <!-- ── Intégrité des fichiers (FIM) ──────────────────────── -->
+  <syscheck>
+    <disabled>no</disabled>
+    <frequency>43200</frequency>
+    <scan_on_start>yes</scan_on_start>
+    <alert_new_files>yes</alert_new_files>
+    <auto_ignore frequency="10" timeframe="3600">no</auto_ignore>
+
+    <directories check_all="yes">/etc,/usr/bin,/usr/sbin</directories>
+    <directories check_all="yes">/bin,/sbin,/boot</directories>
+    <directories check_all="yes" realtime="yes">/etc/ssh,/etc/sudoers.d</directories>
+
+    <ignore>/etc/mtab</ignore>
+    <ignore>/etc/hosts.deny</ignore>
+    <ignore>/etc/mail/statistics</ignore>
+    <ignore>/etc/random-seed</ignore>
+    <ignore>/etc/adjtime</ignore>
+    <ignore>/etc/httpd/logs</ignore>
+    <ignore>/etc/utmpx</ignore>
+    <ignore>/etc/wtmpx</ignore>
+    <ignore>/etc/cups/certs</ignore>
+    <ignore>/etc/dumpdates</ignore>
+    <ignore>/etc/svc/volatile</ignore>
+  </syscheck>
+
+  <!-- ── Détection rootkits ────────────────────────────────── -->
+  <rootcheck>
+    <disabled>no</disabled>
+    <check_files>yes</check_files>
+    <check_trojans>yes</check_trojans>
+    <check_dev>yes</check_dev>
+    <check_sys>yes</check_sys>
+    <check_pids>yes</check_pids>
+    <check_ports>yes</check_ports>
+    <check_if>yes</check_if>
+    <frequency>43200</frequency>
+    <rootkit_files>/var/ossec/etc/shared/rootkit_files.txt</rootkit_files>
+    <rootkit_trojans>/var/ossec/etc/shared/rootkit_trojans.txt</rootkit_trojans>
+    <system_audit>/var/ossec/etc/shared/system_audit_rcl.txt</system_audit>
+    <system_audit>/var/ossec/etc/shared/system_audit_ssh.txt</system_audit>
+    <system_audit>/var/ossec/etc/shared/cis_debian_linux_rcl.txt</system_audit>
+  </rootcheck>
+
+  <!-- ── SCA – Security Configuration Assessment ───────────── -->
+  <sca>
+    <enabled>yes</enabled>
+    <scan_on_start>yes</scan_on_start>
+    <interval>12h</interval>
+    <skip_nfs>yes</skip_nfs>
+  </sca>
+
+  <!-- ── Active Response ───────────────────────────────────── -->
+  <active-response>
+    <disabled>no</disabled>
+    <ca_store>/var/ossec/etc/wpk_root.pem</ca_store>
+    <ca_verification>yes</ca_verification>
+  </active-response>
+
+  <!-- ── Logging ────────────────────────────────────────────── -->
+  <logging>
+    <log_format>plain</log_format>
+  </logging>
+
+</ossec_config>

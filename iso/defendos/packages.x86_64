@@ -1,0 +1,252 @@
+# ============================================================
+# DefendOS – packages.x86_64
+# Paquets installés dans le live ISO (dépôts Arch + BlackArch)
+# ============================================================
+
+# ── Base système ─────────────────────────────────────────────
+base
+base-devel
+linux
+linux-headers
+linux-firmware
+mkinitcpio
+mkinitcpio-archiso
+grub
+efibootmgr
+syslinux
+dosfstools
+e2fsprogs
+btrfs-progs
+os-prober
+sudo
+polkit
+
+# ── Réseau de base ───────────────────────────────────────────
+networkmanager
+network-manager-applet
+nm-connection-editor
+openssh
+iw
+wireless_tools
+wpa_supplicant
+dhcpcd
+dnsmasq
+curl
+wget
+rsync
+
+# ── Shell & utilitaires ──────────────────────────────────────
+zsh
+zsh-completions
+zsh-autosuggestions
+zsh-syntax-highlighting
+tmux
+neovim
+vim
+nano
+git
+htop
+btop
+tree
+jq
+unzip
+p7zip
+ripgrep
+fd
+bat
+fzf
+lsof
+strace
+ltrace
+tcpdump
+
+# ── Interface graphique (XFCE) ────────────────────────────────
+xorg-server
+xorg-xinit
+xorg-xrandr
+xorg-xsetroot
+xf86-video-vesa
+xf86-video-fbdev
+xf86-input-libinput
+mesa
+libva-mesa-driver
+xfce4
+xfce4-goodies
+xfce4-terminal
+xfce4-notifyd
+lightdm
+lightdm-gtk-greeter
+lightdm-gtk-greeter-settings
+gvfs
+thunar-archive-plugin
+file-roller
+mousepad
+ristretto
+xarchiver
+pavucontrol
+network-manager-applet
+blueman
+picom
+feh
+rofi
+dunst
+lxappearance
+
+# ── Thème & apparence ─────────────────────────────────────────
+arc-gtk-theme
+papirus-icon-theme
+ttf-dejavu
+ttf-liberation
+ttf-font-awesome
+noto-fonts
+noto-fonts-emoji
+
+# ── Navigateur & outils graphiques ───────────────────────────
+firefox
+wireshark-qt
+zenmap
+keepassxc
+hexchat
+
+# ── Éditeur de code / analyse ────────────────────────────────
+code
+ghidra
+
+# ── Sécurité : Pare-feu & durcissement ────────────────────────
+ufw
+gufw
+fail2ban
+apparmor
+apparmor-profiles
+audit
+libpwquality
+lynis
+rkhunter
+clamav
+chkrootkit
+
+# ── Monitoring & logs ─────────────────────────────────────────
+syslog-ng
+logrotate
+lnav
+iotop
+nethogs
+iftop
+bandwhich
+ctop
+
+# ── IDS / NDR ─────────────────────────────────────────────────
+suricata
+zeek
+snort
+
+# ── Pentest – Reconnaissance ──────────────────────────────────
+nmap
+masscan
+rustscan
+whatweb
+theharvester
+maltego
+recon-ng
+amass
+subfinder
+dnsx
+httpx
+naabu
+gobuster
+feroxbuster
+ffuf
+dirsearch
+nikto
+wapiti
+nuclei
+katana
+
+# ── Pentest – Exploitation ────────────────────────────────────
+metasploit
+sqlmap
+commix
+xsstrike
+
+# ── Pentest – Web ─────────────────────────────────────────────
+burpsuite
+zaproxy
+caido
+
+# ── Pentest – Passwords ───────────────────────────────────────
+hashcat
+john
+thc-hydra
+medusa
+ncrack
+crunch
+cewl
+wordlistctl
+
+# ── Pentest – Réseau ─────────────────────────────────────────
+bettercap
+mitmproxy
+tcpdump
+tshark
+ngrep
+netcat
+socat
+proxychains-ng
+tor
+stunnel
+
+# ── Pentest – Wireless ───────────────────────────────────────
+aircrack-ng
+hcxtools
+hcxdumptool
+wifi-honey
+kismet
+
+# ── Pentest – Post-exploitation ──────────────────────────────
+empire
+covenant
+impacket
+crackmapexec
+evil-winrm
+bloodhound
+neo4j
+
+# ── Forensics & reverse ───────────────────────────────────────
+volatility3
+autopsy
+sleuthkit
+foremost
+binwalk
+radare2
+iaito
+gdb
+pwndbg
+pwntools
+yara
+strings
+ltrace
+strace
+
+# ── Cryptographie ─────────────────────────────────────────────
+openssl
+gnupg
+hashdeep
+ssldump
+sslscan
+testssl.sh
+
+# ── Virtualisation / conteneurs ───────────────────────────────
+docker
+docker-compose
+qemu-base
+libvirt
+virt-manager
+
+# ── Python & libs ────────────────────────────────────────────
+python
+python-pip
+python-requests
+python-scapy
+python-impacket
+python-cryptography
+ipython

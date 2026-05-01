@@ -1,0 +1,50 @@
+## DefendOS – Règles auditd
+## /etc/audit/rules.d/defendos.rules
+
+# Supprimer les anciennes règles
+-D
+# Taille du buffer
+-b 8192
+# Niveau d'échec : 1 = log, 2 = panic
+-f 1
+
+# ── Identité & authentification ──────────────────────────────
+-w /etc/passwd      -p wa -k identity
+-w /etc/shadow      -p wa -k identity
+-w /etc/group       -p wa -k identity
+-w /etc/gshadow     -p wa -k identity
+-w /etc/security    -p wa -k identity
+-w /etc/sudoers     -p wa -k priv_esc
+-w /etc/sudoers.d   -p wa -k priv_esc
+
+# ── Fichiers système critiques ────────────────────────────────
+-w /etc/sysctl.conf       -p wa -k sysctl
+-w /etc/sysctl.d/         -p wa -k sysctl
+-w /etc/ssh/sshd_config   -p wa -k ssh_cfg
+-w /etc/hosts             -p wa -k hosts
+-w /etc/ld.so.conf        -p wa -k ldso
+
+# ── Appels système privilégiés ────────────────────────────────
+-a always,exit -F arch=b64 -S execve -F euid=0 -F auid>=1000 -F auid!=unset -k root_cmd
+-a always,exit -F arch=b64 -S execve -F path=/usr/bin/sudo   -k privileged
+-a always,exit -F arch=b64 -S execve -F path=/usr/bin/su     -k privileged
+-a always,exit -F arch=b64 -S execve -F path=/usr/bin/passwd -k privileged
+
+# ── Accès réseau ─────────────────────────────────────────────
+-a always,exit -F arch=b64 -S socket  -F a0=2  -k network_socket
+-a always,exit -F arch=b64 -S connect -k network_connect
+-a always,exit -F arch=b64 -S bind    -k network_bind
+
+# ── Modules noyau ─────────────────────────────────────────────
+-a always,exit -F arch=b64 -S init_module -S delete_module -k modules
+
+# ── Temps système ─────────────────────────────────────────────
+-a always,exit -F arch=b64 -S adjtimex -S settimeofday -k time_change
+-w /etc/localtime -p wa -k time_change
+
+# ── Accès fichiers sensibles ──────────────────────────────────
+-w /var/log/      -p wa -k log_tamper
+-w /proc/sysrq-trigger -p w -k sysrq
+
+# Rendre les règles immuables (nécessite reboot pour modifier)
+-e 2

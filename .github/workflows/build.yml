@@ -1,0 +1,144 @@
+name: DefendOS – Build & Test
+
+on:
+  push:
+    branches: [main, develop]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      build_iso:
+        description: 'Construire l ISO complète'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  # ── Lint & validation des scripts ──────────────────────────
+  lint:
+    name: Lint & Shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Shellcheck – Scripts bash
+        run: |
+          find . -name "*.sh" -not -path "./.git/*" | while read -r f; do
+            echo "Checking: $f"
+            shellcheck --severity=warning "$f"
+          done
+
+      - name: Validate packages list
+        run: |
+          # Vérifier qu'il n'y a pas de doublons dans packages.x86_64
+          DUPES=$(grep -v '^#' iso/defendos/packages.x86_64 | grep -v '^$' | sort | uniq -d)
+          if [[ -n "$DUPES" ]]; then
+            echo "❌ Paquets en double dans packages.x86_64 :"
+            echo "$DUPES"
+            exit 1
+          fi
+          echo "✅ packages.x86_64 OK (pas de doublons)"
+
+      - name: Check profiledef.sh syntax
+        run: bash -n iso/defendos/profiledef.sh
+
+      - name: Check Python syntax
+        run: |
+          python3 -m py_compile iso/defendos/airootfs/usr/local/bin/defendos-gui
+          python3 -m py_compile iso/defendos/airootfs/usr/local/bin/defendos-welcome
+          python3 -m py_compile iso/defendos/airootfs/usr/local/bin/tool-launcher
+          echo "✅ Syntaxe Python OK"
+
+  # ── Build ISO (optionnel – sur Arch uniquement) ────────────
+  build-iso:
+    name: Build ISO
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' && github.event.inputs.build_iso == 'true' ||
+      startsWith(github.ref, 'refs/tags/v')
+    needs: lint
+    container:
+      image: archlinux:latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Arch + BlackArch
+        run: |
+          pacman -Sy --noconfirm archiso curl
+          # Ajouter BlackArch repo
+          cat >> /etc/pacman.conf <<'EOF'
+          [blackarch]
+          Server = https://www.mirrorservice.org/sites/blackarch.org/blackarch/$repo/os/$arch
+          EOF
+          pacman -Sy --noconfirm
+
+      - name: Build ISO
+        run: |
+          mkdir -p build/{iso,work}
+          mkarchiso -v \
+            -w build/work \
+            -o build/iso \
+            iso/defendos/
+        timeout-minutes: 90
+
+      - name: Generate checksums
+        run: |
+          cd build/iso
+          ISO=$(find . -name "*.iso" | head -1)
+          sha256sum "$ISO" > "${ISO}.sha256"
+          sha512sum "$ISO" > "${ISO}.sha512"
+          echo "ISO: $ISO"
+          cat "${ISO}.sha256"
+
+      - name: Upload ISO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: defendos-iso-${{ github.sha }}
+          path: |
+            build/iso/*.iso
+            build/iso/*.sha256
+            build/iso/*.sha512
+          retention-days: 7
+
+      - name: Create Release (on tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            build/iso/*.iso
+            build/iso/*.sha256
+            build/iso/*.sha512
+          body: |
+            ## DefendOS ${{ github.ref_name }}
+
+            ### Téléchargement
+            Vérifiez le checksum SHA256 avant d'utiliser l'ISO.
+
+            ### Changelog
+            Voir [CHANGELOG.md](CHANGELOG.md)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Scan de sécurité des scripts ───────────────────────────
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trivy – Scan secrets & misconfigs
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: secret,misconfig
+          format: table
+          exit-code: 0
+          severity: HIGH,CRITICAL

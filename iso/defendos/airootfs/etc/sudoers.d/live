@@ -1,0 +1,3 @@
+# DefendOS Live – root sans mot de passe en mode live
+# Ce fichier est spécifique au live CD et ne doit pas être inclus dans une installation pérenne
+root ALL=(ALL:ALL) NOPASSWD: ALL

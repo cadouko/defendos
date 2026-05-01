@@ -1,0 +1,357 @@
+#!/usr/bin/env python3
+"""
+DefendOS GUI Launcher
+Interface graphique principale pour naviguer dans les outils.
+Dépendances : python-gobject (GTK3)
+"""
+
+import gi
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gtk, Gdk, GdkPixbuf, GLib, Pango
+import subprocess
+import os
+import sys
+import json
+from pathlib import Path
+
+TOOLS = {
+    "🔴 Offensif": {
+        "description": "Pentest & Red Team",
+        "color": "#e74c3c",
+        "tools": [
+            {"name": "Nmap (GUI)", "cmd": "zenmap", "desc": "Scanner réseau graphique"},
+            {"name": "Metasploit", "cmd": "xfce4-terminal -e 'msfconsole'", "desc": "Framework d'exploitation"},
+            {"name": "Burp Suite", "cmd": "burpsuite", "desc": "Proxy web & scanner"},
+            {"name": "Nuclei", "cmd": "xfce4-terminal -e 'nuclei -h'", "desc": "Scanner de vulnérabilités"},
+            {"name": "SQLMap", "cmd": "xfce4-terminal -e 'sqlmap --wizard'", "desc": "Injection SQL automatisée"},
+            {"name": "ffuf", "cmd": "xfce4-terminal -e 'bash'", "desc": "Fuzzer web rapide"},
+            {"name": "Hashcat", "cmd": "xfce4-terminal -e 'hashcat --help'", "desc": "Cracking de hashes GPU"},
+            {"name": "John the Ripper", "cmd": "xfce4-terminal -e 'john --help'", "desc": "Cracking de mots de passe"},
+            {"name": "Aircrack-ng", "cmd": "xfce4-terminal -e 'aircrack-ng --help'", "desc": "Audit WiFi"},
+            {"name": "Impacket", "cmd": "xfce4-terminal -e 'bash'", "desc": "Outils réseau Windows/SMB"},
+        ]
+    },
+    "🔵 Défensif": {
+        "description": "Blue Team & Monitoring",
+        "color": "#2980b9",
+        "tools": [
+            {"name": "Wireshark", "cmd": "wireshark", "desc": "Analyse de trafic réseau"},
+            {"name": "Suricata (status)", "cmd": "xfce4-terminal -e 'bash -c \"suricata-update && echo OK; read\"'", "desc": "IDS/IPS réseau"},
+            {"name": "Zeek (logs)", "cmd": "xfce4-terminal -e 'bash -c \"zeek --help; read\"'", "desc": "Analyse trafic avancée"},
+            {"name": "Lynis (audit)", "cmd": "xfce4-terminal -e 'bash -c \"lynis audit system; read\"'", "desc": "Audit de sécurité système"},
+            {"name": "ClamAV (scan)", "cmd": "xfce4-terminal -e 'bash -c \"clamscan -r /home; read\"'", "desc": "Antivirus open source"},
+            {"name": "Rkhunter", "cmd": "xfce4-terminal -e 'bash -c \"rkhunter --check; read\"'", "desc": "Détection rootkits"},
+            {"name": "Fail2Ban (status)", "cmd": "xfce4-terminal -e 'bash -c \"fail2ban-client status; read\"'", "desc": "Blocage brute-force"},
+            {"name": "UFW (firewall)", "cmd": "xfce4-terminal -e 'bash -c \"ufw status verbose; read\"'", "desc": "Pare-feu"},
+            {"name": "Auditd (logs)", "cmd": "xfce4-terminal -e 'bash -c \"journalctl -u auditd -n 50; read\"'", "desc": "Journaux d'audit kernel"},
+        ]
+    },
+    "🟣 Forensics": {
+        "description": "Analyse & Reverse Engineering",
+        "color": "#8e44ad",
+        "tools": [
+            {"name": "Volatility3", "cmd": "xfce4-terminal -e 'bash -c \"vol --help; read\"'", "desc": "Forensics mémoire"},
+            {"name": "Autopsy", "cmd": "autopsy", "desc": "Forensics disque (GUI)"},
+            {"name": "Binwalk", "cmd": "xfce4-terminal -e 'bash -c \"binwalk --help; read\"'", "desc": "Analyse firmware/binaires"},
+            {"name": "Radare2", "cmd": "iaito", "desc": "Reverse engineering (GUI)"},
+            {"name": "GDB + pwndbg", "cmd": "xfce4-terminal -e 'gdb'", "desc": "Debugger"},
+            {"name": "Foremost", "cmd": "xfce4-terminal -e 'bash -c \"foremost --help; read\"'", "desc": "Récupération de fichiers"},
+            {"name": "Strings", "cmd": "xfce4-terminal -e 'bash'", "desc": "Extraction de chaînes"},
+        ]
+    },
+    "⚙️ Système": {
+        "description": "Outils système & config",
+        "color": "#27ae60",
+        "tools": [
+            {"name": "Terminal", "cmd": "xfce4-terminal", "desc": "Terminal XFCE"},
+            {"name": "Gestionnaire fichiers", "cmd": "thunar", "desc": "Explorateur de fichiers"},
+            {"name": "Éditeur texte", "cmd": "mousepad", "desc": "Éditeur de texte"},
+            {"name": "VS Code", "cmd": "code", "desc": "Éditeur de code"},
+            {"name": "KeePassXC", "cmd": "keepassxc", "desc": "Gestionnaire de mots de passe"},
+            {"name": "Hardening", "cmd": "xfce4-terminal -e 'bash -c \"/usr/local/bin/defendos-hardening; read\"'", "desc": "Appliquer le hardening système"},
+            {"name": "Mise à jour", "cmd": "xfce4-terminal -e 'bash -c \"pacman -Syu; read\"'", "desc": "Mettre à jour le système"},
+        ]
+    },
+}
+
+CSS = b"""
+window {
+    background-color: #1a1a2e;
+    color: #e0e0e0;
+}
+.sidebar {
+    background-color: #16213e;
+    border-right: 1px solid #0f3460;
+    min-width: 200px;
+}
+.cat-btn {
+    background: transparent;
+    border: none;
+    color: #a0a0c0;
+    padding: 14px 20px;
+    text-align: left;
+    font-size: 14px;
+    border-radius: 0;
+    transition: all 0.2s;
+}
+.cat-btn:hover, .cat-btn.active {
+    background-color: #0f3460;
+    color: #e0e0ff;
+    border-left: 3px solid #e94560;
+}
+.tool-card {
+    background-color: #16213e;
+    border: 1px solid #0f3460;
+    border-radius: 8px;
+    margin: 6px;
+    padding: 14px;
+    transition: all 0.2s;
+}
+.tool-card:hover {
+    background-color: #0f3460;
+    border-color: #e94560;
+}
+.tool-name {
+    font-weight: bold;
+    font-size: 13px;
+    color: #e0e0ff;
+}
+.tool-desc {
+    font-size: 11px;
+    color: #8888aa;
+    margin-top: 4px;
+}
+.header-bar {
+    background-color: #0f3460;
+    padding: 8px 16px;
+    border-bottom: 2px solid #e94560;
+}
+.header-title {
+    font-size: 18px;
+    font-weight: bold;
+    color: #e94560;
+}
+.header-sub {
+    font-size: 11px;
+    color: #8888aa;
+}
+.launch-btn {
+    background-color: #e94560;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: bold;
+}
+.launch-btn:hover {
+    background-color: #c73652;
+}
+.search-entry {
+    background-color: #0f3460;
+    color: #e0e0e0;
+    border: 1px solid #e94560;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+}
+"""
+
+
+class DefendOSLauncher(Gtk.Window):
+    def __init__(self):
+        super().__init__(title="DefendOS – Tool Launcher")
+        self.set_default_size(1100, 700)
+        self.set_position(Gtk.WindowPosition.CENTER)
+
+        # CSS
+        provider = Gtk.CssProvider()
+        provider.load_from_data(CSS)
+        Gtk.StyleContext.add_provider_for_screen(
+            Gdk.Screen.get_default(),
+            provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+
+        self.current_category = list(TOOLS.keys())[0]
+        self._build_ui()
+
+    def _build_ui(self):
+        vbox_main = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.add(vbox_main)
+
+        # Header
+        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        header.get_style_context().add_class("header-bar")
+        header.set_margin_bottom(0)
+
+        logo_label = Gtk.Label(label="⚔️  DefendOS")
+        logo_label.get_style_context().add_class("header-title")
+        header.pack_start(logo_label, False, False, 0)
+
+        sep = Gtk.Label(label="  |  ")
+        sep.get_style_context().add_class("header-sub")
+        header.pack_start(sep, False, False, 0)
+
+        sub_label = Gtk.Label(label="Cybersecurity Live OS – Arch Linux + BlackArch")
+        sub_label.get_style_context().add_class("header-sub")
+        header.pack_start(sub_label, False, False, 0)
+
+        # Recherche
+        self.search = Gtk.SearchEntry()
+        self.search.set_placeholder_text("🔍 Rechercher un outil...")
+        self.search.get_style_context().add_class("search-entry")
+        self.search.connect("search-changed", self._on_search)
+        header.pack_end(self.search, False, False, 0)
+
+        vbox_main.pack_start(header, False, False, 0)
+
+        # Corps : sidebar + contenu
+        hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        vbox_main.pack_start(hbox, True, True, 0)
+
+        # Sidebar
+        sidebar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        sidebar.get_style_context().add_class("sidebar")
+
+        self.cat_buttons = {}
+        for cat_name in TOOLS:
+            btn = Gtk.Button(label=cat_name)
+            btn.get_style_context().add_class("cat-btn")
+            btn.connect("clicked", self._on_cat_clicked, cat_name)
+            sidebar.pack_start(btn, False, False, 0)
+            self.cat_buttons[cat_name] = btn
+
+        # Status bar en bas de la sidebar
+        sidebar.pack_end(self._build_status_bar(), False, False, 0)
+        hbox.pack_start(sidebar, False, False, 0)
+
+        # Zone tools (scrollable)
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.tools_grid = Gtk.FlowBox()
+        self.tools_grid.set_max_children_per_line(3)
+        self.tools_grid.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.tools_grid.set_margin_top(10)
+        self.tools_grid.set_margin_start(6)
+        self.tools_grid.set_margin_end(6)
+        scroll.add(self.tools_grid)
+        hbox.pack_start(scroll, True, True, 0)
+
+        self._load_category(self.current_category)
+        self._update_sidebar_active()
+        self.show_all()
+
+    def _build_status_bar(self):
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        box.set_margin_top(20)
+        box.set_margin_bottom(12)
+        box.set_margin_start(12)
+        box.set_margin_end(12)
+
+        import platform
+        uname = platform.uname()
+        kernel_lbl = Gtk.Label(label=f"🖥  Kernel : {uname.release[:20]}")
+        kernel_lbl.set_xalign(0)
+        kernel_lbl.get_style_context().add_class("tool-desc")
+        box.pack_start(kernel_lbl, False, False, 0)
+
+        # Vérif root
+        if os.geteuid() == 0:
+            root_lbl = Gtk.Label(label="⚠️  Lancé en ROOT")
+            root_lbl.set_xalign(0)
+        else:
+            root_lbl = Gtk.Label(label="👤  Utilisateur normal")
+            root_lbl.set_xalign(0)
+        root_lbl.get_style_context().add_class("tool-desc")
+        box.pack_start(root_lbl, False, False, 0)
+
+        return box
+
+    def _load_category(self, cat_name, filter_text=""):
+        for child in self.tools_grid.get_children():
+            self.tools_grid.remove(child)
+
+        tools = TOOLS[cat_name]["tools"]
+        for tool in tools:
+            if filter_text and filter_text.lower() not in tool["name"].lower() \
+                    and filter_text.lower() not in tool["desc"].lower():
+                continue
+            card = self._build_tool_card(tool)
+            self.tools_grid.add(card)
+
+        self.tools_grid.show_all()
+
+    def _build_tool_card(self, tool):
+        frame = Gtk.Frame()
+        frame.get_style_context().add_class("tool-card")
+
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        vbox.set_margin_top(10)
+        vbox.set_margin_bottom(10)
+        vbox.set_margin_start(12)
+        vbox.set_margin_end(12)
+
+        name_lbl = Gtk.Label(label=tool["name"])
+        name_lbl.set_xalign(0)
+        name_lbl.get_style_context().add_class("tool-name")
+        vbox.pack_start(name_lbl, False, False, 0)
+
+        desc_lbl = Gtk.Label(label=tool["desc"])
+        desc_lbl.set_xalign(0)
+        desc_lbl.set_line_wrap(True)
+        desc_lbl.get_style_context().add_class("tool-desc")
+        vbox.pack_start(desc_lbl, False, False, 0)
+
+        btn = Gtk.Button(label="▶ Lancer")
+        btn.get_style_context().add_class("launch-btn")
+        btn.connect("clicked", self._on_launch, tool["cmd"], tool["name"])
+        vbox.pack_start(btn, False, False, 4)
+
+        frame.add(vbox)
+        return frame
+
+    def _on_cat_clicked(self, btn, cat_name):
+        self.current_category = cat_name
+        self.search.set_text("")
+        self._load_category(cat_name)
+        self._update_sidebar_active()
+
+    def _update_sidebar_active(self):
+        for name, btn in self.cat_buttons.items():
+            ctx = btn.get_style_context()
+            if name == self.current_category:
+                ctx.add_class("active")
+            else:
+                ctx.remove_class("active")
+
+    def _on_search(self, entry):
+        text = entry.get_text()
+        self._load_category(self.current_category, filter_text=text)
+
+    def _on_launch(self, btn, cmd, name):
+        try:
+            subprocess.Popen(cmd, shell=True,
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+        except Exception as e:
+            dialog = Gtk.MessageDialog(
+                transient_for=self,
+                flags=0,
+                message_type=Gtk.MessageType.ERROR,
+                buttons=Gtk.ButtonsType.OK,
+                text=f"Erreur lors du lancement de {name}"
+            )
+            dialog.format_secondary_text(str(e))
+            dialog.run()
+            dialog.destroy()
+
+
+def main():
+    app = DefendOSLauncher()
+    app.connect("destroy", Gtk.main_quit)
+    Gtk.main()
+
+
+if __name__ == "__main__":
+    main()
