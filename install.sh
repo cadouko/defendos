@@ -11,7 +11,8 @@ set -euo pipefail
 IFS=$'\n\t'
 
 # ─── Constantes ───────────────────────────────────────────────
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+readonly SCRIPT_DIR
 readonly VERSION="1.0.0"
 readonly LOG="/var/log/defendos-install.log"
 readonly BLACKARCH_URL="https://blackarch.org/strap.sh"
