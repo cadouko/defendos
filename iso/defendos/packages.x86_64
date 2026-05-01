@@ -23,7 +23,6 @@ polkit
 
 # ── Réseau de base ───────────────────────────────────────────
 networkmanager
-network-manager-applet
 nm-connection-editor
 openssh
 iw
@@ -186,7 +185,6 @@ wordlistctl
 # ── Pentest – Réseau ─────────────────────────────────────────
 bettercap
 mitmproxy
-tcpdump
 tshark
 ngrep
 netcat
@@ -224,8 +222,6 @@ pwndbg
 pwntools
 yara
 strings
-ltrace
-strace
 
 # ── Cryptographie ─────────────────────────────────────────────
 openssl
