@@ -70,7 +70,11 @@ jobs:
 
       - name: Setup Arch + BlackArch
         run: |
-          pacman -Sy --noconfirm archiso curl
+          pacman -Sy --noconfirm archiso curl wget
+          # Installer la clé BlackArch AVANT d'ajouter le repo
+          wget -qO /tmp/blackarch-keyring.pkg.tar.zst https://blackarch.org/keyring/blackarch-keyring.pkg.tar.zst
+          pacman -U --noconfirm /tmp/blackarch-keyring.pkg.tar.zst
+          rm -f /tmp/blackarch-keyring.pkg.tar.zst
           # Ajouter BlackArch repo
           cat >> /etc/pacman.conf <<'EOF'
           [blackarch]
