@@ -70,17 +70,8 @@ jobs:
 
       - name: Setup Arch + BlackArch
         run: |
-          pacman -Sy --noconfirm archiso curl wget
-          # Installer la clé BlackArch AVANT d'ajouter le repo
-          wget -qO /tmp/blackarch-keyring.pkg.tar.zst https://blackarch.org/keyring/blackarch-keyring.pkg.tar.zst
-          pacman -U --noconfirm /tmp/blackarch-keyring.pkg.tar.zst
-          rm -f /tmp/blackarch-keyring.pkg.tar.zst
-          # Ajouter BlackArch repo
-          cat >> /etc/pacman.conf <<'EOF'
-          [blackarch]
-          Server = https://www.mirrorservice.org/sites/blackarch.org/blackarch/$repo/os/$arch
-          EOF
-          pacman -Sy --noconfirm
+          pacman -Sy --noconfirm archiso gnupg
+          yes | bash <(curl -fsSL https://blackarch.org/strap.sh)
 
       - name: Build ISO
         run: |
