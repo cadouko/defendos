@@ -70,7 +70,7 @@ jobs:
 
       - name: Setup Arch + BlackArch
         run: |
-          pacman -Sy --noconfirm archiso gnupg
+          pacman -Sy --noconfirm archiso gnupg grub
           yes | bash <(curl -fsSL https://blackarch.org/strap.sh)
 
       - name: Build ISO

@@ -14,6 +14,7 @@ mkinitcpio-archiso
 grub
 efibootmgr
 syslinux
+memtest86+
 dosfstools
 e2fsprogs
 btrfs-progs
