@@ -36,6 +36,11 @@ step() { echo -e "${GREEN}[+]${NC} $1"; }
 warn() { echo -e "${YELLOW}[!]${NC} $1"; }
 fail() { echo -e "${RED}[✗]${NC} $1"; }
 
+# ── 0. Generate wallpaper if missing ────────────────────────
+if [[ ! -f /opt/defendos/wallpaper.png ]]; then
+    python3 /opt/defendos/generate-wallpaper.py 2>/dev/null || true
+fi
+
 # ── 1. Appliquer les paramètres sysctl ───────────────────────
 step "Application des paramètres kernel (sysctl)..."
 sysctl --system -q 2>/dev/null || warn "sysctl --system partiel"
