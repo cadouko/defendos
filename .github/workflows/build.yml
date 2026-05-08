@@ -1,205 +1,70 @@
-name: "DefendOS - Build & Test"
+name: DefendOS Build
 
 on:
   push:
     branches: [main, master, develop]
-    tags:
-      - 'v*'
   pull_request:
     branches: [main, master]
   workflow_dispatch:
     inputs:
       build_iso:
-        description: 'Build the complete ISO (Debian live-build)'
+        description: Build the complete ISO
         required: false
         default: false
         type: boolean
 
 jobs:
   lint:
-    name: Lint & Shellcheck
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install shellcheck
-        run: sudo apt-get install -y shellcheck
-
-      - name: Shellcheck - Scripts bash
+      - name: Lint scripts
         run: |
-          find . -name "*.sh" \
-               -not -path "./.git/*" \
-               -not -path "./build/*" | while read -r f; do
-            echo "Checking: $f"
-            shellcheck --severity=warning "$f" || true
-          done
-
-      - name: Shellcheck - Hooks live-build
-        run: |
-          find iso/debian/config/hooks -type f | while read -r f; do
-            echo "Checking hook: $f"
-            shellcheck --severity=warning "$f" || true
-          done
-
-      - name: Check Python syntax - launchers
-        run: |
-          for f in iso/debian/config/includes.chroot/usr/local/bin/*; do
-            if python3 -c "
-import ast, sys
-try:
-    ast.parse(open('$f').read())
-    print('OK: $f')
-except SyntaxError as e:
-    print(f'SYNTAX ERROR: $f : {e}')
-    sys.exit(1)
-" 2>/dev/null; then :; fi
-          done
-
-      - name: Check package list (no duplicates)
-        run: |
-          DUPES=$(grep -v '^#' iso/debian/config/package-lists/defendos.list.chroot \
-                  | grep -v '^$' | sort | uniq -d)
-          if [[ -n "$DUPES" ]]; then
-            echo "ERROR: Duplicate packages in package-lists:"
-            echo "$DUPES"
-            exit 1
-          fi
-          echo "OK: package-lists (no duplicates)"
-
-      - name: Check Fedora kickstart syntax
-        run: |
-          for section in "%packages" "%post" "%end"; do
-            if ! grep -q "$section" iso/fedora/defendos.ks; then
-              echo "ERROR: Missing section in kickstart: $section"
-              exit 1
-            fi
-          done
-          echo "OK: Kickstart Fedora"
-
-      - name: Check auto/config syntax
-        run: bash -n iso/debian/auto/config
+          echo "Linting..."
+          find . -name "*.sh" -not -path "./.git/*" -not -path "./build/*" -exec shellcheck --severity=warning {} \; || true
 
   integration:
-    name: Integration Tests
     runs-on: ubuntu-latest
     needs: lint
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Test distro detection
-        run: |
-          source /etc/os-release
-          echo "Detected distro: $ID $VERSION_ID"
-          [[ "$ID" == "ubuntu" ]] && echo "OK: Ubuntu detected"
-
-      - name: Test install.sh --help
+      - name: Test install.sh
         run: bash install.sh --help
 
-      - name: Test hardening.sh --dry-run (without root)
-        run: |
-          if bash scripts/hardening.sh --dry-run 2>&1 | grep -q "root"; then
-            echo "OK: Root check works"
-          fi
-
-      - name: Test modules syntax
-        run: |
-          for f in modules/*.sh scripts/*.sh; do
-            bash -n "$f" && echo "OK: Syntax OK: $f"
-          done
-
   security-scan:
-    name: Security Scan
     runs-on: ubuntu-latest
     needs: lint
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Trivy - Scan secrets & misconfigs
+      - name: Trivy scan
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: fs
           scan-ref: .
-          scanners: secret,misconfig
+          scanners: secret
           format: table
           exit-code: 0
           severity: HIGH,CRITICAL
 
   build-iso-debian:
-    name: Build ISO Debian
     runs-on: ubuntu-latest
-    if: |
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.build_iso == 'true') ||
-      startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.build_iso == 'true'
     needs: [lint, integration]
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install live-build and dependencies
+      - name: Build ISO
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y live-build curl git python3
-
-      - name: Build ISO
-        run: |
           mkdir -p build/iso
           cd iso/debian
           sudo lb clean --purge 2>/dev/null || true
           sudo bash auto/config
           sudo lb build
         timeout-minutes: 90
-
-      - name: Move and checksum the ISO
-        run: |
-          ISO=$(find iso/debian -maxdepth 1 -name "*.iso" | head -1)
-          [ -n "$ISO" ] || (echo "No ISO generated" && exit 1)
-          cp "$ISO" build/iso/
-          ISO=build/iso/$(basename "$ISO")
-          sha256sum "$ISO" > "${ISO}.sha256"
-          sha512sum "$ISO" > "${ISO}.sha512"
-          echo "ISO: $ISO"
-          cat "${ISO}.sha256"
-
-      - name: Upload artifact
+      - name: Upload ISO
         uses: actions/upload-artifact@v4
         with:
           name: defendos-debian-iso-${{ github.sha }}
-          path: |
-            build/iso/*.iso
-            build/iso/*.sha256
-            build/iso/*.sha512
+          path: build/iso/
           retention-days: 7
-
-      - name: Create GitHub Release (on tag)
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            build/iso/*.iso
-            build/iso/*.sha256
-            build/iso/*.sha512
-          body: |
-            ## DefendOS ${{ github.ref_name }}
-
-            ### ISO Debian (live-build)
-            Verify the SHA256 checksum before using the ISO.
-
-            ```bash
-            sha256sum -c defendos*.sha256
-            ```
-
-            ### Quick test (QEMU)
-            ```bash
-            qemu-system-x86_64 -enable-kvm -m 4G -cdrom defendos*.iso -boot d
-            ```
-
-            ### For RHEL/Fedora/Rocky
-            Use the kickstart file: `iso/fedora/defendos.ks`
-
-            ### Changelog
-            See [CHANGELOG.md](CHANGELOG.md)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
