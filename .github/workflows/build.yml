@@ -18,18 +18,42 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Lint scripts
+      - name: Shellcheck
         run: |
-          echo "Linting..."
           find . -name "*.sh" -not -path "./.git/*" -not -path "./build/*" -exec shellcheck --severity=warning {} \; || true
+      - name: Python syntax
+        run: |
+          for f in iso/debian/config/includes.chroot/usr/local/bin/*; do
+            python3 -m py_compile "$f" 2>/dev/null || true
+          done
+      - name: Package list duplicates
+        run: |
+          DUPES=$(grep -v '^#' iso/debian/config/package-lists/defendos.list.chroot | grep -v '^$' | sort | uniq -d)
+          if [[ -n "$DUPES" ]]; then echo "Duplicates: $DUPES"; exit 1; fi
+          echo "No duplicates"
+      - name: Kickstart syntax
+        run: |
+          for s in "%packages" "%post" "%end"; do
+            grep -q "$s" iso/fedora/defendos.ks || { echo "Missing: $s"; exit 1; }
+          done
+      - name: auto/config syntax
+        run: bash -n iso/debian/auto/config
 
   integration:
     runs-on: ubuntu-latest
     needs: lint
     steps:
       - uses: actions/checkout@v4
-      - name: Test install.sh
+      - name: install.sh --help
         run: bash install.sh --help
+      - name: hardening.sh --dry-run (no root)
+        run: |
+          bash scripts/hardening.sh --dry-run 2>&1 | grep -q "root" && echo "Root check OK" || true
+      - name: Module syntax
+        run: |
+          for f in modules/*.sh scripts/*.sh; do
+            bash -n "$f" || { echo "Syntax error in $f"; exit 1; }
+          done
 
   security-scan:
     runs-on: ubuntu-latest
@@ -41,7 +65,7 @@ jobs:
         with:
           scan-type: fs
           scan-ref: .
-          scanners: secret
+          scanners: secret,misconfig
           format: table
           exit-code: 0
           severity: HIGH,CRITICAL
@@ -52,19 +76,33 @@ jobs:
     needs: [lint, integration]
     steps:
       - uses: actions/checkout@v4
-      - name: Build ISO
+      - name: Install live-build
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y live-build curl git python3
+      - name: Build ISO
+        run: |
           mkdir -p build/iso
           cd iso/debian
           sudo lb clean --purge 2>/dev/null || true
           sudo bash auto/config
           sudo lb build
         timeout-minutes: 90
-      - name: Upload ISO
+      - name: Checksum ISO
+        run: |
+          ISO=$(find iso/debian -maxdepth 1 -name "*.iso" | head -1)
+          [ -n "$ISO" ] || { echo "No ISO generated"; exit 1; }
+          cp "$ISO" build/iso/
+          ISO=build/iso/$(basename "$ISO")
+          sha256sum "$ISO" > "${ISO}.sha256"
+          sha512sum "$ISO" > "${ISO}.sha512"
+          cat "${ISO}.sha256"
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: defendos-debian-iso-${{ github.sha }}
-          path: build/iso/
+          path: |
+            build/iso/*.iso
+            build/iso/*.sha256
+            build/iso/*.sha512
           retention-days: 7

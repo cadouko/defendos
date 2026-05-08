@@ -31,14 +31,16 @@ MODULE="${1:-}"
 AUTO_YES=false
 NO_HARDENING=false
 
+if [[ "$MODULE" == "--help" || "$MODULE" == "-h" ]]; then
+    echo "Usage: $0 [full|offensive|defensive|iso] [--yes] [--no-hardening]"
+    exit 0
+fi
+
 shift 2>/dev/null || true
 for arg in "$@"; do
     case $arg in
         --yes|-y)          AUTO_YES=true ;;
         --no-hardening)    NO_HARDENING=true ;;
-        --help|-h)
-            echo "Usage: $0 [full|offensive|defensive|iso] [--yes] [--no-hardening]"
-            exit 0 ;;
     esac
 done
 
