@@ -1,38 +1,53 @@
-# ⚔️ DefendOS
+# ⚔️ DefendOS v2.0
 
-> **Distribution cybersécurité modulaire – Arch Linux + BlackArch**
-> Mix équilibré Red Team / Pentest + Blue Team / SIEM light
+> **Distribution cybersécurité modulaire – Debian / Ubuntu / RHEL / Fedora / Rocky**
+> Mix équilibré Red Team / Pentest + Blue Team / SIEM – Compatible Windows WSL2 inclus
 
 [![Build Status](https://github.com/defendos/defendos/actions/workflows/build.yml/badge.svg)](https://github.com/defendos/defendos/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Debian](https://img.shields.io/badge/Debian-12%2B-red)](https://debian.org)
+[![Ubuntu](https://img.shields.io/badge/Ubuntu-22.04%2B-orange)](https://ubuntu.com)
+[![RHEL](https://img.shields.io/badge/RHEL%2FFedora%2FRocky-9%2B-blue)](https://rockylinux.org)
 
 ---
 
 ## 📋 Table des matières
 
 - [À propos](#à-propos)
+- [Compatibilité](#compatibilité)
 - [Fonctionnalités](#fonctionnalités)
-- [Prérequis](#prérequis)
 - [Démarrage rapide](#démarrage-rapide)
 - [Modules](#modules)
 - [Construire l'ISO Live](#construire-liso-live)
 - [Hardening](#hardening)
 - [Interface graphique](#interface-graphique)
-- [Configuration](#configuration)
-- [Contribuer](#contribuer)
-- [Avertissement légal](#avertissement-légal)
+- [Différences v1 → v2](#différences-v1--v2)
 
 ---
 
 ## À propos
 
 DefendOS est une distribution Linux live et installable orientée cybersécurité,
-construite sur **Arch Linux + BlackArch**. Elle combine en un seul environnement :
+désormais construite sur **Debian GNU/Linux** (ISO) avec support complet de
+**Ubuntu**, **RHEL**, **Fedora** et **Rocky Linux** pour l'installation sur
+système existant.
 
-- Les outils **offensifs** (pentest, red team, exploitation)
-- Les outils **défensifs** (blue team, IDS, SIEM, hardening)
-- Un **hardening système** avancé et reproductible
-- Une **interface graphique** XFCE avec launcher dédié
+La version 2.0 supprime toute dépendance à Arch Linux et BlackArch, remplacées
+par des équivalents maintenus dans les dépôts officiels Debian/RHEL, des
+binaires Go (ProjectDiscovery, ffuf…) et des paquets pip/gem.
+
+---
+
+## Compatibilité
+
+| Distribution          | Install `install.sh` | ISO live-build | Kickstart |
+|-----------------------|:--------------------:|:--------------:|:---------:|
+| Debian 12 (Bookworm)  | ✅                   | ✅             | –         |
+| Ubuntu 22.04 / 24.04  | ✅                   | ✅             | –         |
+| Fedora 39+            | ✅                   | –              | ✅        |
+| Rocky Linux 9+        | ✅                   | –              | ✅        |
+| AlmaLinux 9+          | ✅                   | –              | ✅        |
+| Windows (WSL2 Ubuntu) | ✅ (sans GUI)        | –              | –         |
 
 ---
 
@@ -43,18 +58,20 @@ construite sur **Arch Linux + BlackArch**. Elle combine en un seul environnement
 | 🔴 Offensif     | Metasploit, Nuclei, SQLMap, ffuf, Burp Suite, Nmap, Hashcat, Aircrack-ng |
 | 🔵 Défensif     | Suricata IDS, Zeek NSM, Wazuh Agent, Lynis, Fail2Ban, ClamAV, Auditd |
 | 🟣 Forensics    | Volatility3, Autopsy, Binwalk, Radare2, GDB+pwndbg, Foremost |
-| ⚙️ Hardening    | SSH, sysctl, AppArmor, auditd, UFW, limites système, politique mdp |
+| ⚙️ Hardening   | SSH, sysctl, AppArmor (Debian) / SELinux (RHEL), UFW / firewalld, auditd |
 | 🖥 GUI          | XFCE4, Launcher GTK3, écran de bienvenue, thème sombre |
 
 ---
 
 ## Prérequis
 
-- **Arch Linux** (pour l'installation sur système existant)
-- **Droits root** (`sudo`)
-- **Connexion internet**
-- **10 Go d'espace disque** minimum
-- Pour builder l'ISO : `archiso` + **20 Go** libres
+| Élément              | Debian/Ubuntu          | RHEL/Fedora/Rocky      |
+|----------------------|------------------------|------------------------|
+| OS minimum           | Debian 12 / Ubuntu 22.04 | RHEL 9 / Fedora 39   |
+| Droits               | root (`sudo`)          | root (`sudo`)          |
+| Connexion internet   | ✅                     | ✅                     |
+| Espace disque        | 10 Go minimum          | 10 Go minimum          |
+| Build ISO            | `live-build` + 20 Go   | `livecd-tools` + 20 Go |
 
 ---
 
@@ -65,23 +82,26 @@ construite sur **Arch Linux + BlackArch**. Elle combine en un seul environnement
 git clone https://github.com/defendos/defendos.git
 cd defendos
 
-# Installation mode Full (Offensif + Défensif)
+# La distribution est auto-détectée (Debian/Ubuntu ou RHEL/Fedora/Rocky)
 sudo ./install.sh full
 
-# Ou avec confirmation automatique
+# Avec confirmation automatique
 sudo ./install.sh full --yes
+
+# Sans hardening
+sudo ./install.sh full --no-hardening
 ```
 
 ---
 
 ## Modules
 
-| Commande                      | Description                          |
-|-------------------------------|--------------------------------------|
-| `sudo ./install.sh full`      | Offensif + Défensif (recommandé)     |
-| `sudo ./install.sh offensive` | Pentest / Red Team uniquement        |
-| `sudo ./install.sh defensive` | Blue Team / SIEM uniquement          |
-| `sudo ./install.sh iso`       | Construire l'ISO live (via archiso)  |
+| Commande                      | Description                           |
+|-------------------------------|---------------------------------------|
+| `sudo ./install.sh full`      | Offensif + Défensif (recommandé)      |
+| `sudo ./install.sh offensive` | Pentest / Red Team uniquement         |
+| `sudo ./install.sh defensive` | Blue Team / SIEM uniquement           |
+| `sudo ./install.sh iso`       | Construire l'ISO (Debian live-build)  |
 
 Options supplémentaires :
 
@@ -94,12 +114,17 @@ Options supplémentaires :
 
 ## Construire l'ISO Live
 
-```bash
-# Via make (recommandé)
-sudo make iso
+### Debian / Ubuntu (live-build)
 
-# Ou directement
-sudo ./install.sh iso
+```bash
+# Installer les dépendances
+sudo make install-deps
+
+# Build complet (lint + ISO)
+sudo make all
+
+# Ou ISO seule
+sudo make iso
 
 # Tester dans QEMU
 sudo make test-qemu
@@ -107,20 +132,35 @@ sudo make test-qemu
 
 L'ISO est générée dans `build/iso/` avec ses checksums SHA256/SHA512.
 
-### Boot options
+### Fedora / Rocky / AlmaLinux (Kickstart)
 
-| Entrée GRUB                    | Description                       |
-|-------------------------------|-----------------------------------|
-| Mode Complet (GUI)            | Démarre XFCE + tous les outils    |
-| Mode Console                  | Sans interface graphique          |
-| Mode Forensic (noswap)        | Préserve la RAM, pas de swap      |
+```bash
+# Installer livecd-tools
+sudo dnf install -y livecd-tools
+
+# Générer l'ISO
+sudo make iso-fedora
+
+# Ou directement
+sudo livecd-creator \
+    --config=iso/fedora/defendos.ks \
+    --fslabel=DefendOS
+```
+
+### Modes de boot GRUB
+
+| Entrée                        | Description                        |
+|-------------------------------|------------------------------------|
+| Mode Complet (GUI)            | Démarre XFCE + tous les outils     |
+| Mode Console                  | Sans interface graphique            |
+| Mode Forensic (noswap)        | Préserve la RAM, pas de swap        |
 
 ---
 
 ## Hardening
 
 ```bash
-# Appliquer le hardening avancé
+# Appliquer le hardening avancé (auto-détecte AppArmor ou SELinux)
 sudo ./scripts/hardening.sh
 
 # Simulation (aucune modification)
@@ -128,24 +168,29 @@ sudo ./scripts/hardening.sh --dry-run
 
 # Sans SSH (si vous êtes en SSH)
 sudo ./scripts/hardening.sh --no-ssh
+
+# Sans pare-feu (UFW ou firewalld)
+sudo ./scripts/hardening.sh --no-firewall
+
+# Sans contrôle d'accès MAC (AppArmor / SELinux)
+sudo ./scripts/hardening.sh --no-mac
 ```
 
 ### Ce que fait le hardening
 
-- **sysctl** : TCP syncookies, rp_filter, ASLR max, kptr_restrict, BPF restreint
-- **SSH** : Pas de root login, clés uniquement, chiffrement fort
-- **UFW** : deny incoming / allow outgoing, SSH rate-limited
-- **AppArmor** : Profils en mode enforce
-- **Auditd** : Règles de traçabilité (identité, sudo, réseau, modules)
-- **Fail2Ban** : SSH protégé (3 essais, ban 24h)
-- **Permissions** : `/etc/shadow`, `/boot`, `/var/log` durcis
-- **Politique mots de passe** : 14 caractères minimum, complexité requise
+| Action                  | Debian/Ubuntu              | RHEL/Fedora/Rocky          |
+|-------------------------|----------------------------|----------------------------|
+| Pare-feu                | UFW (deny incoming)        | firewalld (zone drop)      |
+| Contrôle d'accès (MAC)  | AppArmor (enforce)         | SELinux (enforcing)        |
+| SSH                     | Clés uniquement, no root   | Identique                  |
+| sysctl                  | TCP syncookies, ASLR, BPF  | Identique                  |
+| Auditd                  | Règles DefendOS            | Identique                  |
+| Fail2Ban                | SSH (3 essais, ban 24h)    | Identique                  |
+| Politique mdp           | 14 chars min, complexité   | Identique                  |
 
 ---
 
 ## Interface graphique
-
-En mode live, l'interface se lance automatiquement avec LightDM + XFCE.
 
 ```bash
 # Launcher principal (GTK3)
@@ -160,72 +205,84 @@ tool-launcher
 
 ---
 
-## Configuration
-
-| Fichier                               | Usage                         |
-|---------------------------------------|-------------------------------|
-| `config/suricata/suricata.yaml.example` | Config Suricata à adapter   |
-| `config/wazuh/wazuh-agent.conf.example` | Config Wazuh Agent          |
-| `iso/defendos/packages.x86_64`         | Liste des paquets de l'ISO   |
-| `iso/defendos/profiledef.sh`           | Profil archiso               |
-| `iso/defendos/grub/grub.cfg`           | Menu de boot GRUB            |
-
----
-
 ## Structure du projet
 
 ```
 defendos/
-├── install.sh                    # Installateur principal
-├── Makefile                      # Cibles de build
+├── install.sh                      # Installateur multi-distro (auto-détection)
+├── Makefile                        # Cibles de build
 ├── modules/
-│   ├── offensive.sh              # Outils red team
-│   ├── defensive.sh              # Outils blue team
-│   └── full.sh                   # Les deux
+│   ├── offensive.sh                # Outils red team (apt/dnf + binaires Go/pip)
+│   ├── defensive.sh                # Outils blue team
+│   └── full.sh                     # Les deux
 ├── scripts/
-│   └── hardening.sh              # Hardening système avancé
-├── iso/defendos/                 # Profil archiso
-│   ├── profiledef.sh             # Définition ISO
-│   ├── pacman.conf               # Dépôts (Arch + BlackArch)
-│   ├── packages.x86_64           # Paquets inclus
-│   ├── grub/grub.cfg             # Boot GRUB
-│   └── airootfs/                 # Système de fichiers live
-│       ├── etc/                  # Configs système
-│       ├── root/defendos-post.sh # Script post-boot
-│       └── usr/local/bin/        # Launchers & outils
+│   └── hardening.sh                # Hardening multi-distro (AppArmor/SELinux)
+├── iso/
+│   ├── debian/                     # Profil live-build (Debian/Ubuntu)
+│   │   ├── auto/
+│   │   │   ├── config              # lb config (bookworm, XFCE, etc.)
+│   │   │   └── build               # lb build wrapper
+│   │   └── config/
+│   │       ├── package-lists/
+│   │       │   └── defendos.list.chroot   # Paquets Debian
+│   │       ├── hooks/live/
+│   │       │   └── 9900-defendos.hook.chroot  # Post-install (pip/gem/binaires)
+│   │       └── includes.chroot/    # Overlay système de fichiers
+│   │           ├── etc/            # Configs SSH, sysctl, auditd, LightDM
+│   │           ├── root/           # defendos-post.sh (boot live)
+│   │           └── usr/local/bin/  # Launchers GUI et CLI
+│   └── fedora/
+│       └── defendos.ks             # Kickstart Fedora/Rocky/Alma
 ├── config/
-│   ├── suricata/                 # Config Suricata
-│   └── wazuh/                    # Config Wazuh
-└── .github/workflows/build.yml   # CI/CD GitHub Actions
+│   ├── suricata/                   # Config Suricata exemple
+│   └── wazuh/                      # Config Wazuh Agent exemple
+├── docs/
+│   ├── tools-offensif.md
+│   └── tools-defensif.md
+└── .github/workflows/build.yml     # CI/CD GitHub Actions (Ubuntu runner)
 ```
+
+---
+
+## Différences v1 → v2
+
+| Aspect              | v1.0 (Arch)              | v2.0 (Debian/RHEL)            |
+|---------------------|--------------------------|-------------------------------|
+| Base ISO            | Arch Linux + archiso     | Debian 12 + live-build        |
+| Dépôt étendu        | BlackArch repo           | EPEL + dépôts ProjectDiscovery |
+| AUR / yay           | Requis                   | ❌ Supprimé                   |
+| Gestionnaire        | pacman                   | apt-get / dnf (auto-détecté)  |
+| MAC                 | AppArmor uniquement       | AppArmor (Debian) / SELinux (RHEL) |
+| Pare-feu            | UFW uniquement            | UFW (Debian) / firewalld (RHEL) |
+| CI/CD runner        | `archlinux:latest`       | `ubuntu-latest` (natif)       |
+| Outils Go           | Via BlackArch            | Binaires GitHub officiels     |
+| Build ISO RHEL      | ❌                        | Kickstart (`defendos.ks`)     |
 
 ---
 
 ## Contribuer
 
-1. Fork le dépôt
-2. Crée une branche : `git checkout -b feature/mon-outil`
-3. Commit : `git commit -m 'feat: ajouter mon-outil'`
-4. Push : `git push origin feature/mon-outil`
-5. Ouvre une Pull Request
-
-Merci de tester avec `shellcheck` avant de soumettre :
 ```bash
+# Fork + branche
+git checkout -b feature/mon-outil
+
+# Linter avant commit
 make lint
+
+# Tests
+bash -n modules/offensive.sh
+shellcheck --severity=warning scripts/hardening.sh
 ```
 
 ---
 
 ## ⚠️ Avertissement légal
 
-DefendOS et tous les outils inclus sont destinés **exclusivement** à :
-- Des tests d'intrusion sur des systèmes dont vous êtes propriétaire
-- Des environnements de lab et de formation
-- De la recherche en sécurité dans un cadre légal
-- La défense de systèmes dont vous avez l'autorisation explicite
+DefendOS et tous les outils inclus sont destinés **exclusivement** à des tests
+sur des systèmes dont vous êtes propriétaire, à des environnements de lab et
+à la recherche en sécurité dans un cadre légal.
 
-**Toute utilisation non autorisée est illégale** et peut entraîner des poursuites
-judiciaires. Les auteurs déclinent toute responsabilité pour une utilisation abusive.
+**Toute utilisation non autorisée est illégale.**
 
 ---
 

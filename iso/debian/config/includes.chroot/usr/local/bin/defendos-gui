@@ -69,7 +69,7 @@ TOOLS = {
             {"name": "VS Code", "cmd": "code", "desc": "Éditeur de code"},
             {"name": "KeePassXC", "cmd": "keepassxc", "desc": "Gestionnaire de mots de passe"},
             {"name": "Hardening", "cmd": "xfce4-terminal -e 'bash -c \"/usr/local/bin/defendos-hardening; read\"'", "desc": "Appliquer le hardening système"},
-            {"name": "Mise à jour", "cmd": "xfce4-terminal -e 'bash -c \"pacman -Syu; read\"'", "desc": "Mettre à jour le système"},
+            {"name": "Mise à jour", "cmd": "xfce4-terminal -e 'bash -c \"apt-get update && apt-get upgrade; read\"'", "desc": "Mettre à jour le système"},
         ]
     },
 }

@@ -1,0 +1,7 @@
+#!/bin/sh
+# DefendOS – live-build auto/build
+
+set -e
+cd "$(dirname "$0")/.."
+
+lb build 2>&1 | tee build.log

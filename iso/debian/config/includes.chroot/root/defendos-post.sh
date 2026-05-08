@@ -1,7 +1,6 @@
 #!/bin/bash
-# DefendOS – Script post-démarrage Live
+# DefendOS – Script post-démarrage Live (Debian/Ubuntu)
 # Exécuté automatiquement au premier boot via systemd
-# /airootfs/root/defendos-post.sh
 
 set -euo pipefail
 
@@ -27,28 +26,25 @@ banner() {
   ╚═════╝ ╚══════╝╚═╝     ╚══════╝╚═╝  ╚═══╝╚═════╝  ╚═════╝ ╚══════╝
 EOF
     echo -e "${NC}"
-    echo -e "${BOLD}     Cybersecurity Live OS – Arch Linux + BlackArch${NC}"
+    echo -e "${BOLD}     Cybersecurity Live OS – Debian GNU/Linux${NC}"
     echo -e "${YELLOW}     Usage éthique et légal uniquement.${NC}"
     echo ""
 }
 
 step() { echo -e "${GREEN}[+]${NC} $1"; }
 warn() { echo -e "${YELLOW}[!]${NC} $1"; }
-fail() { echo -e "${RED}[✗]${NC} $1"; }
 
-# ── 0. Generate wallpaper if missing ────────────────────────
-if [[ ! -f /opt/defendos/wallpaper.png ]]; then
-    python3 /opt/defendos/generate-wallpaper.py 2>/dev/null || true
-fi
-
-# ── 1. Appliquer les paramètres sysctl ───────────────────────
+# ── 1. Paramètres sysctl ──────────────────────────────────────
 step "Application des paramètres kernel (sysctl)..."
 sysctl --system -q 2>/dev/null || warn "sysctl --system partiel"
 
-# ── 2. Démarrer les services essentiels ──────────────────────
+# ── 2. Services réseau ────────────────────────────────────────
 step "Démarrage des services réseau..."
-systemctl start NetworkManager --no-block 2>/dev/null || warn "NetworkManager non disponible"
+systemctl start NetworkManager --no-block 2>/dev/null || \
+systemctl start networking --no-block 2>/dev/null || \
+    warn "Réseau : service non disponible"
 
+# ── 3. Pare-feu UFW ───────────────────────────────────────────
 step "Démarrage du pare-feu UFW..."
 if command -v ufw &>/dev/null; then
     ufw --force reset   >/dev/null 2>&1
@@ -61,7 +57,7 @@ else
     warn "ufw non trouvé, pare-feu ignoré"
 fi
 
-# ── 3. AppArmor ───────────────────────────────────────────────
+# ── 4. AppArmor ───────────────────────────────────────────────
 step "Activation AppArmor..."
 if systemctl start apparmor 2>/dev/null; then
     aa-enforce /etc/apparmor.d/* 2>/dev/null || true
@@ -70,45 +66,43 @@ else
     warn "AppArmor non disponible sur ce kernel"
 fi
 
-# ── 4. Auditd ─────────────────────────────────────────────────
+# ── 5. Auditd ─────────────────────────────────────────────────
 step "Démarrage d'auditd..."
 systemctl start auditd 2>/dev/null && \
     augenrules --load 2>/dev/null || \
     warn "auditd non disponible"
 
-# ── 5. ClamAV (base de signatures) ───────────────────────────
+# ── 6. ClamAV ────────────────────────────────────────────────
 if command -v freshclam &>/dev/null; then
     step "Mise à jour des signatures ClamAV en arrière-plan..."
     freshclam --quiet &
 fi
 
-# ── 6. Configurer le shell root ───────────────────────────────
-step "Configuration du shell (zsh + Oh-My-Zsh fallback)..."
+# ── 7. Configuration zsh ──────────────────────────────────────
+step "Configuration du shell (zsh)..."
 if [[ ! -f /root/.zshrc ]]; then
     cat > /root/.zshrc <<'ZSHRC'
-# DefendOS .zshrc
+# DefendOS .zshrc – Debian
 export HISTSIZE=10000
 export SAVEHIST=10000
 export HISTFILE=~/.zsh_history
 setopt HIST_IGNORE_DUPS HIST_IGNORE_SPACE SHARE_HISTORY
 
-# Prompt
 autoload -Uz vcs_info
 precmd() { vcs_info }
 PROMPT='%F{196}[DefendOS]%f %F{39}%~%f%F{226}${vcs_info_msg_0_}%f %# '
 
-# Plugins intégrés
-source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh 2>/dev/null || true
-source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh 2>/dev/null || true
+# Plugins Debian/Ubuntu
+source /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh 2>/dev/null || true
+source /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh 2>/dev/null || true
 
-# Aliases
 alias ll='ls -lahF --color=auto'
 alias la='ls -A --color=auto'
 alias grep='grep --color=auto'
 alias ip='ip -c'
 alias nmap='nmap --privileged'
 alias msfconsole='msfconsole -q'
-alias update='pacman -Syu'
+alias update='apt-get update && apt-get upgrade'
 alias ports='ss -tulnp'
 alias listen='ss -tulnp | grep LISTEN'
 alias firewall='ufw status verbose'
@@ -116,34 +110,35 @@ alias audit-log='journalctl -u auditd -f'
 alias defendos='defendos-gui &'
 alias tools='tool-launcher'
 
-# PATH
-export PATH="$PATH:/usr/local/bin:/opt/defendos/bin"
+export PATH="$PATH:/usr/local/bin:/opt/defendos/bin:/opt/metasploit-framework/bin"
 ZSHRC
 fi
 
-chsh -s /usr/bin/zsh root 2>/dev/null || true
+if command -v zsh &>/dev/null; then
+    chsh -s "$(command -v zsh)" root 2>/dev/null || true
+fi
 
-# ── 7. MOTD ───────────────────────────────────────────────────
+# ── 8. MOTD ───────────────────────────────────────────────────
 cat > /etc/motd <<'MOTD'
 
-  ⚔  DefendOS Live – Cybersecurity OS
-  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ⚔  DefendOS Live – Cybersecurity OS (Debian)
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Commandes rapides :
     defendos-gui      → Launcher graphique
     defendos-welcome  → Écran d'accueil
     lynis audit system → Audit de sécurité
     nmap -sV <cible>   → Scan de services
     suricata -T -c /etc/suricata/suricata.yaml → Test IDS
-  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   ⚠  Usage légal uniquement.
 
 MOTD
 
-# ── 8. Préparer le répertoire de travail ─────────────────────
+# ── 9. Dossier de travail ─────────────────────────────────────
 mkdir -p /root/workspace/{reports,captures,wordlists,exploits,forensics}
 step "Dossier de travail : /root/workspace/"
 
-# ── 9. Lancer l'interface graphique si disponible ─────────────
+# ── 10. Démarrer XFCE si disponible ─────────────────────────
 step "Initialisation terminée. Démarrage de l'interface..."
 if command -v startx &>/dev/null && [[ -z "${DISPLAY:-}" ]]; then
     echo -e "\n${GREEN}Démarrage de XFCE...${NC}"

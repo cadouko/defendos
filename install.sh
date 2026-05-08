@@ -1,26 +1,30 @@
 #!/usr/bin/env bash
-# DefendOS – Installateur principal v1.0.0
+# DefendOS – Installateur principal v2.0.0
+# Compatible : Debian 12+, Ubuntu 22.04+, Fedora 39+, Rocky Linux 9+, AlmaLinux 9+
 # Usage : sudo ./install.sh [full|offensive|defensive|iso] [--yes] [--no-hardening]
 #
 # full       : Outils offensifs + défensifs (défaut)
 # offensive  : Pentest / Red Team uniquement
 # defensive  : Blue Team / SIEM uniquement
-# iso        : Construire l'ISO live (nécessite archiso)
+# iso        : Construire l'ISO live (Debian live-build)
 
 set -euo pipefail
 IFS=$'\n\t'
 
 # ─── Constantes ───────────────────────────────────────────────
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-readonly SCRIPT_DIR
-readonly VERSION="1.0.0"
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly VERSION="2.0.0"
 readonly LOG="/var/log/defendos-install.log"
-readonly BLACKARCH_URL="https://blackarch.org/strap.sh"
-readonly BLACKARCH_SHA1="5ea40d49ecd14c2e024deecf90605426db3d32d5"
 
 # ─── Couleurs ────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
+
+# ─── Globals (remplis par detect_distro) ─────────────────────
+DISTRO_FAMILY=""   # debian | rhel
+PKG_MGR=""         # apt-get | dnf | yum
+DISTRO_ID=""       # debian, ubuntu, fedora, rocky, rhel…
+DISTRO_VERSION=""
 
 # ─── Arguments ───────────────────────────────────────────────
 MODULE="${1:-}"
@@ -55,11 +59,60 @@ header() {
     clear
     echo -e "${BOLD}${CYAN}"
     echo "  ╔══════════════════════════════════════════╗"
-    echo "  ║   DefendOS Installer v${VERSION}              ║"
-    echo "  ║   Arch Linux + BlackArch                 ║"
+    echo "  ║   DefendOS Installer v${VERSION}           ║"
+    echo "  ║   Debian / Ubuntu / RHEL / Fedora        ║"
     echo "  ║   Mix Offensif + Défensif                ║"
     echo "  ╚══════════════════════════════════════════╝"
     echo -e "${NC}"
+}
+
+# ─── Détection de la distribution ────────────────────────────
+detect_distro() {
+    if [[ ! -f /etc/os-release ]]; then
+        fail "/etc/os-release introuvable. Distribution non supportée."
+    fi
+
+    # shellcheck source=/dev/null
+    source /etc/os-release
+    DISTRO_ID="${ID:-unknown}"
+    DISTRO_VERSION="${VERSION_ID:-0}"
+
+    case "$DISTRO_ID" in
+        debian|ubuntu|linuxmint|kali|parrot|pop)
+            DISTRO_FAMILY="debian"
+            PKG_MGR="apt-get"
+            ;;
+        fedora)
+            DISTRO_FAMILY="rhel"
+            PKG_MGR="dnf"
+            ;;
+        rhel|centos|rocky|almalinux|ol)
+            DISTRO_FAMILY="rhel"
+            # CentOS 7 / RHEL 7 utilisent yum
+            if command -v dnf &>/dev/null; then
+                PKG_MGR="dnf"
+            else
+                PKG_MGR="yum"
+            fi
+            ;;
+        *)
+            # Détection par commande disponible
+            if command -v apt-get &>/dev/null; then
+                DISTRO_FAMILY="debian"; PKG_MGR="apt-get"
+                warn "Distribution '$DISTRO_ID' inconnue, mode Debian activé par défaut."
+            elif command -v dnf &>/dev/null; then
+                DISTRO_FAMILY="rhel"; PKG_MGR="dnf"
+                warn "Distribution '$DISTRO_ID' inconnue, mode RHEL/DNF activé par défaut."
+            elif command -v yum &>/dev/null; then
+                DISTRO_FAMILY="rhel"; PKG_MGR="yum"
+                warn "Distribution '$DISTRO_ID' inconnue, mode RHEL/YUM activé par défaut."
+            else
+                fail "Distribution non supportée. Utilisez Debian/Ubuntu ou RHEL/Fedora/Rocky."
+            fi
+            ;;
+    esac
+
+    log "Distribution détectée : ${DISTRO_ID} ${DISTRO_VERSION} (famille: ${DISTRO_FAMILY}, gestionnaire: ${PKG_MGR})"
 }
 
 # ─── Pré-vérifications ────────────────────────────────────────
@@ -68,11 +121,11 @@ preflight_checks() {
 
     [[ $EUID -ne 0 ]] && fail "Doit être exécuté en root : sudo $0"
 
-    [[ ! -f /etc/arch-release ]] && \
-        warn "Non Arch Linux détecté. Certains modules peuvent échouer."
+    detect_distro
 
     # Connexion internet
-    if ! curl -s --connect-timeout 5 https://archlinux.org >/dev/null 2>&1; then
+    if ! curl -s --connect-timeout 5 https://deb.debian.org >/dev/null 2>&1 && \
+       ! curl -s --connect-timeout 5 https://dl.fedoraproject.org >/dev/null 2>&1; then
         fail "Pas de connexion internet. Vérifiez votre réseau."
     fi
 
@@ -87,45 +140,104 @@ preflight_checks() {
     log "Vérifications OK"
 }
 
-# ─── BlackArch Repo ───────────────────────────────────────────
-setup_blackarch() {
-    if pacman -Q blackarch-keyring &>/dev/null; then
-        log "Dépôt BlackArch déjà configuré"
-        return 0
+# ─── Mise à jour du système ────────────────────────────────────
+update_system() {
+    log "Mise à jour des listes de paquets..."
+    if [[ "$DISTRO_FAMILY" == "debian" ]]; then
+        DEBIAN_FRONTEND=noninteractive apt-get update -qq
+    else
+        "$PKG_MGR" makecache -q 2>/dev/null || true
+    fi
+}
+
+# ─── Dépôts supplémentaires ───────────────────────────────────
+setup_extra_repos() {
+    log "Configuration des dépôts supplémentaires..."
+
+    if [[ "$DISTRO_FAMILY" == "debian" ]]; then
+        # Universe / contrib / non-free (Ubuntu)
+        if [[ "$DISTRO_ID" == "ubuntu" ]]; then
+            add-apt-repository -y universe >/dev/null 2>&1 || true
+            add-apt-repository -y multiverse >/dev/null 2>&1 || true
+        fi
+
+        # contrib + non-free pour Debian
+        if [[ "$DISTRO_ID" == "debian" ]]; then
+            local src_file="/etc/apt/sources.list"
+            if ! grep -q "non-free" "$src_file" 2>/dev/null; then
+                sed -i 's/main$/main contrib non-free non-free-firmware/' "$src_file" 2>/dev/null || true
+            fi
+        fi
+
+        # Dépôt Docker CE
+        if ! command -v docker &>/dev/null; then
+            log "Ajout du dépôt Docker CE..."
+            install -m0755 -d /etc/apt/keyrings
+            curl -fsSL https://download.docker.com/linux/"${DISTRO_ID}"/gpg \
+                | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null || true
+            local arch
+            arch=$(dpkg --print-architecture)
+            local codename
+            codename=$(. /etc/os-release && echo "$VERSION_CODENAME")
+            echo "deb [arch=${arch} signed-by=/etc/apt/keyrings/docker.gpg] \
+https://download.docker.com/linux/${DISTRO_ID} ${codename} stable" \
+                > /etc/apt/sources.list.d/docker.list 2>/dev/null || true
+        fi
+
+        DEBIAN_FRONTEND=noninteractive apt-get update -qq
+
+    else
+        # RHEL/Fedora : EPEL
+        if [[ "$DISTRO_ID" != "fedora" ]]; then
+            "$PKG_MGR" install -y epel-release 2>/dev/null || \
+                "$PKG_MGR" install -y \
+                    "https://dl.fedoraproject.org/pub/epel/epel-release-latest-$(rpm -E %rhel).noarch.rpm" \
+                    2>/dev/null || warn "EPEL non installable – certains paquets peuvent manquer"
+        fi
+
+        # RPM Fusion (outils multimédia / firmware)
+        if ! rpm -q rpmfusion-free-release &>/dev/null; then
+            "$PKG_MGR" install -y \
+                "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" \
+                2>/dev/null || true
+        fi
     fi
 
-    log "Configuration du dépôt BlackArch..."
-    local strap="/tmp/blackarch-strap.sh"
-
-    curl -fsSL "$BLACKARCH_URL" -o "$strap"
-
-    # Vérification du checksum SHA1
-    local actual_sha1
-    actual_sha1=$(sha1sum "$strap" | awk '{print $1}')
-    if [[ "$actual_sha1" != "$BLACKARCH_SHA1" ]]; then
-        rm -f "$strap"
-        fail "Checksum BlackArch strap.sh invalide ! (attendu: $BLACKARCH_SHA1, obtenu: $actual_sha1)"
-    fi
-    log "Checksum BlackArch vérifié : OK"
-
-    chmod +x "$strap"
-    bash "$strap"
-    rm -f "$strap"
-    log "Dépôt BlackArch configuré"
+    log "Dépôts configurés"
 }
 
 # ─── Paquets de base ──────────────────────────────────────────
 install_base() {
     log "Installation des paquets de base..."
-    pacman -Syu --noconfirm --needed \
-        base-devel git curl wget zsh zsh-completions \
-        zsh-autosuggestions zsh-syntax-highlighting \
-        tmux neovim vim htop btop tree jq \
-        ufw fail2ban apparmor apparmor-profiles \
-        audit libpwquality \
-        wireshark-qt tcpdump tshark nmap \
-        python python-pip python-gobject gtk3 \
-        networkmanager 2>&1 | grep -E "^(installing|warning|error)" || true
+
+    if [[ "$DISTRO_FAMILY" == "debian" ]]; then
+        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential git curl wget \
+            zsh zsh-autosuggestions zsh-syntax-highlighting \
+            tmux neovim vim nano htop btop tree jq \
+            ufw fail2ban apparmor apparmor-utils apparmor-profiles \
+            auditd libpam-pwquality \
+            wireshark tshark tcpdump nmap \
+            python3 python3-pip python3-gi python3-gi-cairo \
+            gir1.2-gtk-3.0 libgtk-3-0 \
+            ca-certificates gnupg lsb-release \
+            fzf ripgrep bat fd-find lsof \
+            2>&1 | grep -E "^(Setting up|E:|W:)" || true
+    else
+        "$PKG_MGR" install -y \
+            git curl wget \
+            zsh tmux neovim vim nano htop btop tree jq \
+            ufw fail2ban \
+            audit libpwquality \
+            wireshark-cli tcpdump nmap \
+            python3 python3-pip \
+            python3-gobject gtk3 \
+            ca-certificates gnupg \
+            fzf ripgrep bat \
+            epel-release 2>/dev/null || true \
+            2>&1 | grep -E "^(Installing|Error|Warning)" || true
+    fi
+
     log "Paquets de base installés"
 }
 
@@ -136,83 +248,101 @@ install_module() {
 
     [[ ! -f "$script" ]] && fail "Module introuvable : $script"
     chmod +x "$script"
+    # Exporter les variables de distro pour les sous-scripts
+    export DISTRO_FAMILY PKG_MGR DISTRO_ID DISTRO_VERSION AUTO_YES
     bash "$script"
 }
 
 # ─── ISO Build ────────────────────────────────────────────────
 build_iso() {
-    log "Construction de l'ISO DefendOS..."
+    log "Construction de l'ISO DefendOS (Debian live-build)..."
 
-    if ! command -v mkarchiso &>/dev/null; then
-        log "Installation d'archiso..."
-        pacman -S --noconfirm --needed archiso
+    if [[ "$DISTRO_FAMILY" != "debian" ]]; then
+        warn "La construction ISO est basée sur live-build (Debian/Ubuntu)."
+        warn "Pour RHEL/Fedora, utilisez le kickstart : iso/fedora/defendos.ks"
+        info "Consultez : https://github.com/livecd-tools/livecd-tools"
+        exit 0
     fi
 
-    local profile_dir="${SCRIPT_DIR}/iso/defendos"
+    if ! command -v lb &>/dev/null; then
+        log "Installation de live-build..."
+        DEBIAN_FRONTEND=noninteractive apt-get install -y live-build
+    fi
+
+    local profile_dir="${SCRIPT_DIR}/iso/debian"
     local out_dir="${SCRIPT_DIR}/build/iso"
     local work_dir="${SCRIPT_DIR}/build/work"
 
     [[ ! -d "$profile_dir" ]] && fail "Profil ISO introuvable : $profile_dir"
 
     mkdir -p "$out_dir" "$work_dir"
-    log "Profil     : $profile_dir"
-    log "Output     : $out_dir"
-    log "Work dir   : $work_dir"
+    log "Profil live-build : $profile_dir"
+    log "Output            : $out_dir"
+    log "Work dir          : $work_dir"
 
     confirm "Lancer la construction ISO ? (peut prendre 30–90 min)" || exit 0
 
-    mkarchiso \
-        -v \
-        -w "$work_dir" \
-        -o "$out_dir" \
-        "$profile_dir"
+    cd "$profile_dir"
+    # Nettoyer un éventuel build précédent
+    lb clean --purge 2>/dev/null || true
 
+    # Configurer puis construire
+    bash auto/config
+    lb build 2>&1 | tee "${out_dir}/build.log"
+
+    # Récupérer l'ISO générée
     local iso_file
-    iso_file=$(find "$out_dir" -name "*.iso" | head -1)
-    log "ISO créée : $iso_file"
+    iso_file=$(find . -name "*.iso" -maxdepth 1 | head -1)
+    if [[ -z "$iso_file" ]]; then
+        fail "Aucune ISO générée. Consultez ${out_dir}/build.log"
+    fi
 
-    # Générer les checksums
+    cp "$iso_file" "$out_dir/"
+    iso_file="${out_dir}/$(basename "$iso_file")"
+
     sha256sum "$iso_file" > "${iso_file}.sha256"
     sha512sum "$iso_file" > "${iso_file}.sha512"
     log "Checksums générés"
 
+    cd "$SCRIPT_DIR"
+
     echo ""
     echo -e "${BOLD}${GREEN}ISO prête !${NC}"
     echo -e "  Fichier  : ${CYAN}$iso_file${NC}"
-    echo -e "  SHA256   : $(cat "${iso_file}.sha256" | awk '{print $1}')"
+    echo -e "  SHA256   : $(awk '{print $1}' "${iso_file}.sha256")"
     echo ""
-    echo "Pour tester : qemu-system-x86_64 -m 4G -cdrom $iso_file -boot d"
+    echo "Pour tester : qemu-system-x86_64 -enable-kvm -m 4G -cdrom $iso_file -boot d"
 }
 
 # ─── Post-install ─────────────────────────────────────────────
 post_install() {
     log "Configuration post-installation..."
 
-    # Copier les scripts dans /usr/local/bin
-    if [[ -f "${SCRIPT_DIR}/iso/defendos/airootfs/usr/local/bin/defendos-gui" ]]; then
-        install -m755 \
-            "${SCRIPT_DIR}/iso/defendos/airootfs/usr/local/bin/defendos-gui" \
-            /usr/local/bin/defendos-gui
-        install -m755 \
-            "${SCRIPT_DIR}/iso/defendos/airootfs/usr/local/bin/defendos-welcome" \
-            /usr/local/bin/defendos-welcome
-        install -m755 \
-            "${SCRIPT_DIR}/iso/defendos/airootfs/usr/local/bin/tool-launcher" \
-            /usr/local/bin/tool-launcher
-        log "Launchers installés dans /usr/local/bin"
+    # Copier les launchers
+    local bin_src="${SCRIPT_DIR}/iso/debian/config/includes.chroot/usr/local/bin"
+    if [[ -d "$bin_src" ]]; then
+        for launcher in defendos-gui defendos-welcome tool-launcher; do
+            if [[ -f "${bin_src}/${launcher}" ]]; then
+                install -m755 "${bin_src}/${launcher}" "/usr/local/bin/${launcher}"
+                log "Launcher installé : /usr/local/bin/${launcher}"
+            fi
+        done
     fi
 
-    # Créer le dossier de travail
+    # Répertoire de travail
     mkdir -p /root/workspace/{reports,captures,wordlists,exploits,forensics}
     log "Workspace créé : /root/workspace/"
 
     # Zsh par défaut pour root
-    chsh -s /usr/bin/zsh root 2>/dev/null || true
+    if command -v zsh &>/dev/null; then
+        chsh -s "$(command -v zsh)" root 2>/dev/null || true
+    fi
 
-    # Appliquer le hardening
+    # Hardening
     if ! $NO_HARDENING; then
         echo ""
         if confirm "Appliquer le hardening système avancé ?"; then
+            export DISTRO_FAMILY PKG_MGR
             bash "${SCRIPT_DIR}/scripts/hardening.sh"
         fi
     fi
@@ -225,7 +355,7 @@ interactive_menu() {
     echo "  1) Full         – Offensif + Défensif  ${GREEN}(recommandé)${NC}"
     echo "  2) Offensif     – Pentest / Red Team"
     echo "  3) Défensif     – Blue Team / SIEM"
-    echo "  4) ISO Build    – Construire l'ISO live"
+    echo "  4) ISO Build    – Construire l'ISO live (Debian)"
     echo "  5) Quitter"
     echo ""
     read -rp "  Choix [1-5] : " choice
@@ -247,14 +377,14 @@ main() {
     header
     preflight_checks
 
-    # Choix du module
     if [[ -z "$MODULE" ]]; then
         interactive_menu
     fi
 
     case "$MODULE" in
         full|offensive|defensive)
-            setup_blackarch
+            setup_extra_repos
+            update_system
             install_base
             install_module "$MODULE"
             post_install
