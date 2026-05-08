@@ -28,7 +28,7 @@ jobs:
           done
       - name: Package list duplicates
         run: |
-          DUPES=$(grep -v '^#' iso/debian/config/package-lists/defendos.list.chroot | grep -v '^$' | sort | uniq -d)
+          DUPES=$(tr -d '\r' < iso/debian/config/package-lists/defendos.list.chroot | grep -v '^#' | grep -v '^$' | sort | uniq -d)
           if [[ -n "$DUPES" ]]; then echo "Duplicates: $DUPES"; exit 1; fi
           echo "No duplicates"
       - name: Kickstart syntax
