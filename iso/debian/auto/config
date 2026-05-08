@@ -26,11 +26,12 @@ lb config \
     --iso-volume "DefendOS_$(date +%Y%m)" \
     \
     --linux-flavours amd64 \
+    --linux-packages "linux-image-amd64" \
     \
-    --mirror-bootstrap    "http://deb.debian.org/debian/" \
-    --mirror-chroot       "http://deb.debian.org/debian/" \
+    --mirror-bootstrap    "http://deb.debian.org/debian" \
+    --mirror-chroot       "http://deb.debian.org/debian" \
     --security false \
-    --mirror-binary       "http://deb.debian.org/debian/" \
+    --mirror-binary       "http://deb.debian.org/debian" \
     --mirror-binary-security "http://security.debian.org/debian-security" \
     \
     --checksums sha256 \
