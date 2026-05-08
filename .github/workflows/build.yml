@@ -79,7 +79,7 @@ jobs:
       - name: Install live-build
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y live-build curl git python3
+          sudo apt-get install -y live-build curl git python3 debian-archive-keyring ubuntu-keyring
       - name: Build ISO
         run: |
           mkdir -p build/iso
