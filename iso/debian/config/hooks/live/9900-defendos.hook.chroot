@@ -1,0 +1,186 @@
+#!/bin/bash
+# DefendOS – Hook chroot live-build (phase chroot)
+# Exécuté dans le chroot Debian pendant la construction ISO
+# Installe les outils non disponibles dans les dépôts Debian officiels
+
+set -euo pipefail
+
+echo "[DefendOS] Hook 9900 – installation outils complémentaires"
+
+ARCH=$(uname -m)
+case "$ARCH" in
+    x86_64)  ARCH_GO="amd64" ; ARCH_SUFFIX="linux_amd64" ;;
+    aarch64) ARCH_GO="arm64" ; ARCH_SUFFIX="linux_arm64" ;;
+    *)       ARCH_GO="amd64" ; ARCH_SUFFIX="linux_amd64" ;;
+esac
+
+install_go_binary() {
+    local name="$1" binary="$2" url="$3"
+    local resolved_url="${url//\{\{ARCH_SUFFIX\}\}/$ARCH_SUFFIX}"
+    echo "  → $name"
+    local tmp; tmp=$(mktemp -d)
+    curl -fsSL "$resolved_url" -o "$tmp/tool.pkg" 2>/dev/null || \
+        { echo "  [WARN] $name : téléchargement échoué"; rm -rf "$tmp"; return 0; }
+    tar -xzf "$tmp/tool.pkg" -C "$tmp/" 2>/dev/null || \
+        unzip -q "$tmp/tool.pkg" -d "$tmp/" 2>/dev/null || \
+        { install -m755 "$tmp/tool.pkg" "/usr/local/bin/$binary" 2>/dev/null || true; rm -rf "$tmp"; return 0; }
+    local found; found=$(find "$tmp" -name "$binary" -type f 2>/dev/null | head -1)
+    [[ -n "$found" ]] && install -m755 "$found" "/usr/local/bin/$binary" && \
+        echo "  ✓ $name installé" || echo "  [WARN] $name : binaire non trouvé"
+    rm -rf "$tmp"
+}
+
+# ── 1. Outils Go (binaires GitHub) ────────────────────────────
+echo "[+] Outils Go (ProjectDiscovery, etc.)..."
+install_go_binary "nuclei"    "nuclei"    "https://github.com/projectdiscovery/nuclei/releases/latest/download/nuclei_{{ARCH_SUFFIX}}.zip"
+install_go_binary "subfinder" "subfinder" "https://github.com/projectdiscovery/subfinder/releases/latest/download/subfinder_{{ARCH_SUFFIX}}.zip"
+install_go_binary "httpx"     "httpx"     "https://github.com/projectdiscovery/httpx/releases/latest/download/httpx_{{ARCH_SUFFIX}}.zip"
+install_go_binary "dnsx"      "dnsx"      "https://github.com/projectdiscovery/dnsx/releases/latest/download/dnsx_{{ARCH_SUFFIX}}.zip"
+install_go_binary "naabu"     "naabu"     "https://github.com/projectdiscovery/naabu/releases/latest/download/naabu_{{ARCH_SUFFIX}}.zip"
+install_go_binary "katana"    "katana"    "https://github.com/projectdiscovery/katana/releases/latest/download/katana_{{ARCH_SUFFIX}}.zip"
+install_go_binary "ffuf"      "ffuf"      "https://github.com/ffuf/ffuf/releases/latest/download/ffuf_{{ARCH_SUFFIX}}.tar.gz"
+install_go_binary "gobuster"  "gobuster"  "https://github.com/OJ/gobuster/releases/latest/download/gobuster_Linux_{{ARCH_SUFFIX}}.tar.gz"
+install_go_binary "amass"     "amass"     "https://github.com/owasp-amass/amass/releases/latest/download/amass_Linux_{{ARCH_SUFFIX}}.zip"
+
+# ── 2. Outils Python (pip) ────────────────────────────────────
+echo "[+] Outils Python (pip)..."
+pip3 install --quiet --break-system-packages \
+    theHarvester recon-ng wapiti3 commix \
+    crackmapexec volatility3 pwntools sslyze \
+    2>/dev/null || \
+pip3 install --quiet \
+    theHarvester recon-ng wapiti3 commix \
+    crackmapexec volatility3 pwntools sslyze \
+    2>/dev/null || true
+
+# ── 3. Ruby gems ──────────────────────────────────────────────
+echo "[+] Gems Ruby..."
+gem install cewl evil-winrm --no-document 2>/dev/null || true
+
+# ── 4. Zeek (dépôt OBS) ──────────────────────────────────────
+echo "[+] Zeek NSM..."
+{
+    curl -fsSL "https://download.opensuse.org/repositories/security:zeek/Debian_12/Release.key" \
+        | gpg --dearmor > /etc/apt/keyrings/zeek.gpg 2>/dev/null
+    echo "deb [signed-by=/etc/apt/keyrings/zeek.gpg] https://download.opensuse.org/repositories/security:/zeek/Debian_12/ /" \
+        > /etc/apt/sources.list.d/zeek.list
+    apt-get update -qq 2>/dev/null
+    DEBIAN_FRONTEND=noninteractive apt-get install -y zeek 2>/dev/null && echo "  ✓ Zeek installé"
+} 2>/dev/null || echo "  [WARN] Zeek : installation échouée"
+
+# ── 5. testssl.sh ─────────────────────────────────────────────
+echo "[+] testssl.sh..."
+curl -fsSL https://testssl.sh/testssl.sh -o /usr/local/bin/testssl.sh 2>/dev/null && \
+    chmod +x /usr/local/bin/testssl.sh && \
+    ln -sf /usr/local/bin/testssl.sh /usr/local/bin/testssl && \
+    echo "  ✓ testssl.sh installé" || echo "  [WARN] testssl.sh : échoué"
+
+# ── 6. pwndbg (GDB plugin) ───────────────────────────────────
+echo "[+] pwndbg..."
+{
+    tmp=$(mktemp -d)
+    git clone --depth=1 https://github.com/pwndbg/pwndbg.git "$tmp/pwndbg" 2>/dev/null
+    cd "$tmp/pwndbg"
+    bash setup.sh 2>/dev/null
+    cd /
+    rm -rf "$tmp"
+    echo "  ✓ pwndbg installé"
+} 2>/dev/null || echo "  [WARN] pwndbg : installation échouée"
+
+# ── 7. rockyou.txt (si absent) ───────────────────────────────
+echo "[+] Wordlists..."
+if [[ ! -f /usr/share/wordlists/rockyou.txt ]]; then
+    mkdir -p /usr/share/wordlists
+    # wordlists package l'installe compressé
+    if [[ -f /usr/share/wordlists/rockyou.txt.gz ]]; then
+        gunzip -k /usr/share/wordlists/rockyou.txt.gz 2>/dev/null || true
+        echo "  ✓ rockyou.txt décompressé"
+    else
+        curl -fsSL \
+            "https://github.com/brannondorsey/naive-hashcat/releases/download/data/rockyou.txt" \
+            -o /usr/share/wordlists/rockyou.txt 2>/dev/null && \
+            echo "  ✓ rockyou.txt téléchargé" || echo "  [WARN] rockyou.txt : téléchargement échoué"
+    fi
+fi
+
+# ── 8. VS Code (dépôt Microsoft) ─────────────────────────────
+echo "[+] Visual Studio Code..."
+{
+    curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
+        | gpg --dearmor > /etc/apt/keyrings/microsoft.gpg 2>/dev/null
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/microsoft.gpg] \
+https://packages.microsoft.com/repos/code stable main" \
+        > /etc/apt/sources.list.d/vscode.list
+    apt-get update -qq 2>/dev/null
+    DEBIAN_FRONTEND=noninteractive apt-get install -y code 2>/dev/null && echo "  ✓ VS Code installé"
+} 2>/dev/null || echo "  [WARN] VS Code : installation échouée"
+
+# ── 9. BloodHound + Neo4j ────────────────────────────────────
+echo "[+] Neo4j (pour BloodHound)..."
+{
+    curl -fsSL https://debian.neo4j.com/neotechnology.gpg.key \
+        | gpg --dearmor > /etc/apt/keyrings/neo4j.gpg 2>/dev/null
+    echo "deb [signed-by=/etc/apt/keyrings/neo4j.gpg] https://debian.neo4j.com stable latest" \
+        > /etc/apt/sources.list.d/neo4j.list
+    apt-get update -qq 2>/dev/null
+    DEBIAN_FRONTEND=noninteractive apt-get install -y neo4j 2>/dev/null && echo "  ✓ Neo4j installé"
+    # BloodHound GUI
+    local_tmp=$(mktemp -d)
+    curl -fsSL "https://github.com/BloodHoundAD/BloodHound/releases/latest/download/BloodHound-linux-x64.zip" \
+        -o "$local_tmp/bh.zip" 2>/dev/null
+    unzip -q "$local_tmp/bh.zip" -d /opt/ 2>/dev/null
+    ln -sf /opt/BloodHound-linux-x64/BloodHound /usr/local/bin/bloodhound 2>/dev/null
+    rm -rf "$local_tmp"
+    echo "  ✓ BloodHound installé"
+} 2>/dev/null || echo "  [WARN] BloodHound/Neo4j : installation échouée"
+
+# ── 10. Configuration Suricata ───────────────────────────────
+echo "[+] Suricata – mise à jour des règles..."
+suricata-update 2>/dev/null || true
+systemctl enable suricata 2>/dev/null || true
+
+# ── 11. ClamAV – signatures ───────────────────────────────────
+echo "[+] ClamAV – mise à jour signatures..."
+freshclam --quiet 2>/dev/null || true
+systemctl enable clamav-freshclam 2>/dev/null || true
+
+# ── 12. Zsh config root ───────────────────────────────────────
+echo "[+] Configuration zsh..."
+chsh -s /bin/zsh root 2>/dev/null || true
+cat > /root/.zshrc <<'ZSHRC'
+# DefendOS .zshrc
+export HISTSIZE=10000
+export SAVEHIST=10000
+export HISTFILE=~/.zsh_history
+setopt HIST_IGNORE_DUPS HIST_IGNORE_SPACE SHARE_HISTORY
+
+autoload -Uz vcs_info
+precmd() { vcs_info }
+PROMPT='%F{196}[DefendOS]%f %F{39}%~%f%F{226}${vcs_info_msg_0_}%f %# '
+
+# Plugins Debian
+source /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh 2>/dev/null || true
+source /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh 2>/dev/null || true
+
+alias ll='ls -lahF --color=auto'
+alias la='ls -A --color=auto'
+alias grep='grep --color=auto'
+alias ip='ip -c'
+alias nmap='nmap --privileged'
+alias msfconsole='msfconsole -q'
+alias update='apt-get update && apt-get upgrade'
+alias ports='ss -tulnp'
+alias listen='ss -tulnp | grep LISTEN'
+alias firewall='ufw status verbose'
+alias audit-log='journalctl -u auditd -f'
+alias defendos='defendos-gui &'
+alias tools='tool-launcher'
+
+export PATH="$PATH:/usr/local/bin:/opt/defendos/bin:/opt/metasploit-framework/bin"
+ZSHRC
+
+# ── 13. Workspace racine ─────────────────────────────────────
+mkdir -p /root/workspace/{reports,captures,wordlists,exploits,forensics}
+
+echo ""
+echo "[DefendOS] ✅ Hook 9900 terminé"

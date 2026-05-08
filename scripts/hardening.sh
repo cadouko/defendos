@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# DefendOS – Script de hardening avancé
-# Version : 1.0.0
-# Usage   : sudo ./scripts/hardening.sh [--dry-run] [--no-ssh] [--no-firewall]
+# DefendOS – Script de hardening avancé v2.0.0
+# Compatible : Debian/Ubuntu (AppArmor/UFW), RHEL/Fedora/Rocky (SELinux/firewalld)
+# Usage   : sudo ./scripts/hardening.sh [--dry-run] [--no-ssh] [--no-firewall] [--no-mac]
 # Idempotent : peut être relancé sans danger
 
 set -euo pipefail
 IFS=$'\n\t'
 
-# ─── Couleurs ────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 
@@ -15,39 +14,61 @@ CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 DRY_RUN=false
 SKIP_SSH=false
 SKIP_FIREWALL=false
-SKIP_APPARMOR=false
+SKIP_MAC=false    # MAC = AppArmor (Debian) ou SELinux (RHEL)
 
 for arg in "$@"; do
     case $arg in
         --dry-run)      DRY_RUN=true ;;
         --no-ssh)       SKIP_SSH=true ;;
         --no-firewall)  SKIP_FIREWALL=true ;;
-        --no-apparmor)  SKIP_APPARMOR=true ;;
+        --no-mac)       SKIP_MAC=true ;;
+        --no-apparmor)  SKIP_MAC=true ;;    # alias rétrocompatible
         --help|-h)
-            echo "Usage: $0 [--dry-run] [--no-ssh] [--no-firewall] [--no-apparmor]"
+            echo "Usage: $0 [--dry-run] [--no-ssh] [--no-firewall] [--no-mac]"
             exit 0 ;;
     esac
 done
+
+# ─── Détection distro ─────────────────────────────────────────
+DISTRO_FAMILY="${DISTRO_FAMILY:-}"
+PKG_MGR="${PKG_MGR:-}"
+
+if [[ -z "$DISTRO_FAMILY" ]]; then
+    if [[ -f /etc/os-release ]]; then
+        # shellcheck source=/dev/null
+        source /etc/os-release
+        case "${ID:-}" in
+            debian|ubuntu|linuxmint|kali|parrot)
+                DISTRO_FAMILY="debian"; PKG_MGR="apt-get" ;;
+            fedora|rhel|centos|rocky|almalinux|ol)
+                DISTRO_FAMILY="rhel"
+                PKG_MGR=$(command -v dnf &>/dev/null && echo "dnf" || echo "yum") ;;
+            *)
+                if command -v apt-get &>/dev/null; then DISTRO_FAMILY="debian"; PKG_MGR="apt-get"
+                elif command -v dnf &>/dev/null;   then DISTRO_FAMILY="rhel";   PKG_MGR="dnf"
+                else DISTRO_FAMILY="debian";             PKG_MGR="apt-get"; fi ;;
+        esac
+    fi
+fi
 
 # ─── Helpers ─────────────────────────────────────────────────
 LOG="/var/log/defendos-hardening.log"
 BACKUP_DIR="/etc/defendos-backup/$(date +%Y%m%d_%H%M%S)"
 
-log()  { echo -e "${GREEN}[+]${NC} $*" | tee -a "$LOG"; }
-warn() { echo -e "${YELLOW}[!]${NC} $*" | tee -a "$LOG"; }
-fail() { echo -e "${RED}[✗]${NC} $*" | tee -a "$LOG"; }
-info() { echo -e "${CYAN}[i]${NC} $*" | tee -a "$LOG"; }
+log()     { echo -e "${GREEN}[+]${NC} $*" | tee -a "$LOG"; }
+warn()    { echo -e "${YELLOW}[!]${NC} $*" | tee -a "$LOG"; }
+fail()    { echo -e "${RED}[✗]${NC} $*" | tee -a "$LOG"; }
+info()    { echo -e "${CYAN}[i]${NC} $*" | tee -a "$LOG"; }
 section() {
     echo "" | tee -a "$LOG"
     echo -e "${BOLD}${CYAN}━━━ $* ━━━${NC}" | tee -a "$LOG"
 }
 
 run() {
-    # Execute une commande ou simule si --dry-run
     if $DRY_RUN; then
         echo -e "  ${YELLOW}[DRY]${NC} $*"
     else
-        eval "$*"
+        eval "$@"
     fi
 }
 
@@ -57,22 +78,18 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-if [[ ! -f /etc/arch-release ]]; then
-    warn "Ce script est conçu pour Arch Linux. Continuer quand même ? [y/N]"
-    read -r answer
-    [[ "${answer,,}" == "y" ]] || exit 1
-fi
-
 echo -e "\n${BOLD}${RED}╔══════════════════════════════════════╗${NC}"
-echo -e "${BOLD}${RED}║   DefendOS – Hardening Avancé v1.0   ║${NC}"
+echo -e "${BOLD}${RED}║   DefendOS – Hardening Avancé v2.0   ║${NC}"
 echo -e "${BOLD}${RED}╚══════════════════════════════════════╝${NC}\n"
+info "Distribution : $DISTRO_FAMILY / $PKG_MGR"
 $DRY_RUN && warn "Mode DRY-RUN activé – aucune modification ne sera appliquée.\n"
 
 # ─── Sauvegarde des configs originales ───────────────────────
 section "Sauvegarde des configurations"
 if ! $DRY_RUN; then
     mkdir -p "$BACKUP_DIR"
-    for f in /etc/ssh/sshd_config /etc/sysctl.conf /etc/security/limits.conf; do
+    for f in /etc/ssh/sshd_config /etc/sysctl.conf /etc/security/limits.conf \
+              /etc/security/pwquality.conf; do
         [[ -f "$f" ]] && cp -a "$f" "$BACKUP_DIR/" && log "Sauvegardé : $f"
     done
     log "Backup dans : $BACKUP_DIR"
@@ -80,19 +97,24 @@ fi
 
 # ─── 1. Mises à jour système ─────────────────────────────────
 section "Mises à jour système"
-if command -v pacman &>/dev/null; then
-    run "pacman -Syu --noconfirm --needed audit fail2ban apparmor apparmor-profiles \
-         ufw libpwquality lynis rkhunter clamav 2>&1 | tail -5"
-    log "Paquets de sécurité installés/mis à jour"
+if [[ "$DISTRO_FAMILY" == "debian" ]]; then
+    run "DEBIAN_FRONTEND=noninteractive $PKG_MGR update -qq"
+    run "DEBIAN_FRONTEND=noninteractive $PKG_MGR install -y --no-install-recommends \
+        auditd fail2ban apparmor apparmor-utils apparmor-profiles \
+        ufw libpam-pwquality lynis rkhunter clamav 2>&1 | tail -5"
+else
+    run "$PKG_MGR makecache -q"
+    run "$PKG_MGR install -y \
+        audit fail2ban firewalld libpwquality lynis rkhunter clamav 2>&1 | tail -5"
 fi
+log "Paquets de sécurité installés/mis à jour"
 
 # ─── 2. Paramètres kernel (sysctl) ───────────────────────────
 section "Hardening kernel (sysctl)"
 SYSCTL_CONF="/etc/sysctl.d/99-defendos.conf"
 
-if [[ ! -f "$SYSCTL_CONF" ]] || ! $DRY_RUN; then
-    run "cat > $SYSCTL_CONF <<'EOF'
-# DefendOS sysctl hardening
+run "cat > $SYSCTL_CONF <<'EOF'
+# DefendOS sysctl hardening v2.0
 net.ipv4.tcp_syncookies                 = 1
 net.ipv4.conf.all.rp_filter            = 1
 net.ipv4.conf.default.rp_filter        = 1
@@ -126,9 +148,9 @@ fs.protected_fifos                     = 2
 fs.protected_regular                   = 2
 fs.suid_dumpable                       = 0
 EOF"
-    run "sysctl --system -q"
-    log "Paramètres kernel appliqués"
-fi
+
+run "sysctl --system -q"
+log "Paramètres kernel appliqués"
 
 # ─── 3. SSH Hardening ────────────────────────────────────────
 if ! $SKIP_SSH; then
@@ -157,52 +179,86 @@ MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
 EOF"
 
     if ! $DRY_RUN; then
+        local_sshd="sshd"
+        # Ubuntu utilise parfois "ssh"
+        command -v sshd &>/dev/null || local_sshd="ssh"
         if sshd -t 2>/dev/null; then
             systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null || true
             log "SSH durci et redémarré"
         else
-            fail "Configuration SSH invalide – reverted"
+            fail "Configuration SSH invalide – rollback"
             rm -f "$SSH_DROP"
         fi
     fi
 fi
 
-# ─── 4. Pare-feu UFW ─────────────────────────────────────────
+# ─── 4. Pare-feu ─────────────────────────────────────────────
 if ! $SKIP_FIREWALL; then
-    section "Configuration pare-feu (UFW)"
-    if command -v ufw &>/dev/null; then
-        run "ufw --force reset"
-        run "ufw default deny incoming"
-        run "ufw default allow outgoing"
-        run "ufw limit ssh comment 'SSH rate limited'"
-        run "ufw deny proto tcp from any to any port 23 comment 'Block Telnet'"
-        run "ufw deny proto tcp from any to any port 2323 comment 'Block alt-Telnet'"
-        run "ufw --force enable"
-        run "systemctl enable --now ufw"
-        log "UFW configuré et activé"
+    section "Configuration pare-feu"
+
+    if [[ "$DISTRO_FAMILY" == "debian" ]]; then
+        # ── UFW (Debian/Ubuntu) ──────────────────────────────
+        if command -v ufw &>/dev/null; then
+            run "ufw --force reset"
+            run "ufw default deny incoming"
+            run "ufw default allow outgoing"
+            run "ufw limit ssh comment 'SSH rate limited'"
+            run "ufw deny proto tcp from any to any port 23 comment 'Block Telnet'"
+            run "ufw deny proto tcp from any to any port 2323 comment 'Block alt-Telnet'"
+            run "ufw --force enable"
+            run "systemctl enable --now ufw"
+            log "UFW configuré et activé"
+        else
+            warn "ufw non disponible – installation..."
+            DEBIAN_FRONTEND=noninteractive apt-get install -y ufw 2>/dev/null && \
+                bash "$0" --no-mac --no-ssh || warn "ufw non installable"
+        fi
     else
-        warn "ufw non installé – pare-feu ignoré"
+        # ── firewalld (RHEL/Fedora) ──────────────────────────
+        if command -v firewall-cmd &>/dev/null; then
+            run "systemctl enable --now firewalld"
+            run "firewall-cmd --set-default-zone=drop"
+            run "firewall-cmd --permanent --add-service=ssh"
+            run "firewall-cmd --permanent --add-rich-rule='rule service name=ssh limit value=3/m accept'"
+            run "firewall-cmd --permanent --remove-service=telnet 2>/dev/null || true"
+            run "firewall-cmd --reload"
+            log "firewalld configuré et activé (zone drop, SSH rate-limited)"
+        else
+            warn "firewalld non disponible"
+        fi
     fi
 fi
 
-# ─── 5. AppArmor ─────────────────────────────────────────────
-if ! $SKIP_APPARMOR; then
-    section "AppArmor"
-    if command -v aa-enforce &>/dev/null; then
-        run "systemctl enable --now apparmor"
-        run "aa-enforce /etc/apparmor.d/* 2>/dev/null || true"
-        log "AppArmor activé en mode enforce"
+# ─── 5. Contrôle d'accès obligatoire (MAC) ───────────────────
+if ! $SKIP_MAC; then
+    if [[ "$DISTRO_FAMILY" == "debian" ]]; then
+        # ── AppArmor (Debian/Ubuntu) ──────────────────────────
+        section "AppArmor"
+        if command -v aa-enforce &>/dev/null; then
+            run "systemctl enable --now apparmor"
+            run "aa-enforce /etc/apparmor.d/* 2>/dev/null || true"
+            log "AppArmor activé en mode enforce"
+        else
+            warn "AppArmor non disponible (kernel sans support ?)"
+        fi
     else
-        warn "AppArmor non disponible"
+        # ── SELinux (RHEL/Fedora) ─────────────────────────────
+        section "SELinux"
+        if command -v setenforce &>/dev/null; then
+            run "setenforce 1"
+            run "sed -i 's/^SELINUX=.*/SELINUX=enforcing/' /etc/selinux/config"
+            log "SELinux : mode enforcing activé"
+        else
+            warn "SELinux non disponible"
+        fi
     fi
 fi
 
 # ─── 6. Auditd ───────────────────────────────────────────────
 section "Audit système (auditd)"
-if command -v auditd &>/dev/null; then
-    run "systemctl enable --now auditd"
-    AUDIT_RULES="/etc/audit/rules.d/defendos.rules"
-    run "cat > $AUDIT_RULES <<'EOF'
+AUDIT_RULES="/etc/audit/rules.d/defendos.rules"
+run "mkdir -p /etc/audit/rules.d"
+run "cat > $AUDIT_RULES <<'EOF'
 -D
 -b 8192
 -f 1
@@ -220,8 +276,16 @@ if command -v auditd &>/dev/null; then
 -a always,exit -F arch=b64 -S adjtimex -S settimeofday -k time_change
 -w /var/log/ -p wa -k log_tamper
 EOF"
+
+AUDITD_SVC="auditd"
+if ! systemctl is-active auditd &>/dev/null 2>&1; then AUDITD_SVC="auditd"; fi
+
+if command -v auditd &>/dev/null; then
     if ! $DRY_RUN; then
-        augenrules --load 2>/dev/null && systemctl restart auditd && log "Règles auditd chargées"
+        systemctl enable "$AUDITD_SVC" 2>/dev/null || true
+        augenrules --load 2>/dev/null && systemctl restart "$AUDITD_SVC" && \
+            log "Règles auditd chargées" || \
+            warn "augenrules échoué – rechargement manuel : auditctl -R $AUDIT_RULES"
     fi
 else
     warn "auditd non installé"
@@ -232,12 +296,15 @@ section "Fail2Ban"
 if command -v fail2ban-client &>/dev/null; then
     F2B_LOCAL="/etc/fail2ban/jail.local"
     if [[ ! -f "$F2B_LOCAL" ]]; then
-        run "cat > $F2B_LOCAL <<'EOF'
+        BACKEND="systemd"
+        # Vérifier si systemd est disponible
+        command -v systemctl &>/dev/null || BACKEND="auto"
+        run "cat > $F2B_LOCAL <<EOF
 [DEFAULT]
 bantime  = 3600
 findtime = 600
 maxretry = 5
-backend  = systemd
+backend  = $BACKEND
 ignoreip = 127.0.0.1/8 ::1
 
 [sshd]

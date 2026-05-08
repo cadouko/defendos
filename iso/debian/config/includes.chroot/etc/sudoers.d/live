@@ -1,0 +1,2 @@
+# DefendOS live – root NOPASSWD
+root ALL=(ALL:ALL) NOPASSWD: ALL

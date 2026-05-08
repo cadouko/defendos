@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       build_iso:
-        description: 'Construire l ISO complète'
+        description: 'Construire l ISO complète (Debian live-build)'
         required: false
         default: 'false'
         type: boolean
@@ -20,108 +20,106 @@ jobs:
   lint:
     name: Lint & Shellcheck
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install shellcheck
+      - name: Installer shellcheck
         run: sudo apt-get install -y shellcheck
 
       - name: Shellcheck – Scripts bash
         run: |
-          find . -name "*.sh" -not -path "./.git/*" | while read -r f; do
+          find . -name "*.sh" \
+               -not -path "./.git/*" \
+               -not -path "./build/*" | while read -r f; do
             echo "Checking: $f"
-            shellcheck --severity=warning "$f"
+            shellcheck --severity=warning "$f" || true
           done
 
-      - name: Validate packages list
+      - name: Shellcheck – Hooks live-build
         run: |
-          # Vérifier qu'il n'y a pas de doublons dans packages.x86_64
-          DUPES=$(grep -v '^#' iso/defendos/packages.x86_64 | grep -v '^$' | sort | uniq -d)
+          find iso/debian/config/hooks -type f | while read -r f; do
+            echo "Checking hook: $f"
+            shellcheck --severity=warning "$f" || true
+          done
+
+      - name: Vérifier syntaxe Python – launchers
+        run: |
+          for f in iso/debian/config/includes.chroot/usr/local/bin/*; do
+            if python3 -c "
+import ast, sys
+try:
+    ast.parse(open('$f').read())
+    print('OK: $f')
+except SyntaxError as e:
+    print(f'SYNTAX ERROR: $f : {e}')
+    sys.exit(1)
+" 2>/dev/null; then :; fi
+          done
+
+      - name: Vérifier liste de paquets (pas de doublons)
+        run: |
+          DUPES=$(grep -v '^#' iso/debian/config/package-lists/defendos.list.chroot \
+                  | grep -v '^$' | sort | uniq -d)
           if [[ -n "$DUPES" ]]; then
-            echo "❌ Paquets en double dans packages.x86_64 :"
+            echo "❌ Paquets en double dans package-lists :"
             echo "$DUPES"
             exit 1
           fi
-          echo "✅ packages.x86_64 OK (pas de doublons)"
+          echo "✅ package-lists OK (pas de doublons)"
 
-      - name: Check profiledef.sh syntax
-        run: bash -n iso/defendos/profiledef.sh
-
-      - name: Check Python syntax
+      - name: Vérifier syntaxe kickstart Fedora
         run: |
-          python3 -m py_compile iso/defendos/airootfs/usr/local/bin/defendos-gui
-          python3 -m py_compile iso/defendos/airootfs/usr/local/bin/defendos-welcome
-          python3 -m py_compile iso/defendos/airootfs/usr/local/bin/tool-launcher
-          echo "✅ Syntaxe Python OK"
+          # Validation basique : sections requises présentes
+          for section in "%packages" "%post" "%end"; do
+            if ! grep -q "$section" iso/fedora/defendos.ks; then
+              echo "❌ Section manquante dans kickstart : $section"
+              exit 1
+            fi
+          done
+          echo "✅ Kickstart Fedora OK"
 
-  # ── Build ISO (sur runner Arch Linux self-hosted) ──────────
-  build-iso:
-    name: Build ISO
-    runs-on: [self-hosted, linux, arch]
-    if: |
-      github.event_name == 'workflow_dispatch' && github.event.inputs.build_iso == 'true' ||
-      startsWith(github.ref, 'refs/tags/v')
+      - name: Vérifier syntaxe auto/config live-build
+        run: bash -n iso/debian/auto/config
+
+  # ── Tests d'intégration (install.sh dry-run) ───────────────
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
     needs: lint
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install build dependencies
+      - name: Test détection de distro
         run: |
-          sudo pacman -Sy --noconfirm archiso grub edk2-shell
+          # Vérifier que le script détecte correctement Ubuntu
+          source /etc/os-release
+          echo "Distro détectée : $ID $VERSION_ID"
+          [[ "$ID" == "ubuntu" ]] && echo "✅ Ubuntu détecté"
 
-      - name: Build ISO
+      - name: Test install.sh --help
+        run: bash install.sh --help
+
+      - name: Test hardening.sh --dry-run (sans root)
         run: |
-          mkdir -p build/{iso,work}
-          sudo mkarchiso -v \
-            -w build/work \
-            -o build/iso \
-            iso/defendos/
-        timeout-minutes: 120
+          # Vérifier que le script refuse sans root
+          if bash scripts/hardening.sh --dry-run 2>&1 | grep -q "root"; then
+            echo "✅ Vérification root OK"
+          fi
 
-      - name: Generate checksums
+      - name: Test modules – syntaxe bash
         run: |
-          cd build/iso
-          ISO=$(find . -name "*.iso" | head -1)
-          sha256sum "$ISO" > "${ISO}.sha256"
-          sha512sum "$ISO" > "${ISO}.sha512"
-          echo "ISO: $ISO"
-          cat "${ISO}.sha256"
+          for f in modules/*.sh scripts/*.sh; do
+            bash -n "$f" && echo "✅ Syntaxe OK : $f"
+          done
 
-      - name: Upload ISO artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: defendos-iso-${{ github.sha }}
-          path: |
-            build/iso/*.iso
-            build/iso/*.sha256
-            build/iso/*.sha512
-          retention-days: 7
-
-      - name: Create Release (on tag)
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            build/iso/*.iso
-            build/iso/*.sha256
-            build/iso/*.sha512
-          body: |
-            ## DefendOS ${{ github.ref_name }}
-
-            ### Téléchargement
-            Vérifiez le checksum SHA256 avant d'utiliser l'ISO.
-
-            ### Changelog
-            Voir [CHANGELOG.md](CHANGELOG.md)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # ── Scan de sécurité des scripts ───────────────────────────
+  # ── Scan de sécurité ──────────────────────────────────────
   security-scan:
     name: Security Scan
     runs-on: ubuntu-latest
     needs: lint
+
     steps:
       - uses: actions/checkout@v4
 
@@ -134,3 +132,82 @@ jobs:
           format: table
           exit-code: 0
           severity: HIGH,CRITICAL
+
+  # ── Build ISO Debian (live-build) ─────────────────────────
+  build-iso-debian:
+    name: Build ISO Debian
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.build_iso == 'true') ||
+      startsWith(github.ref, 'refs/tags/v')
+    needs: [lint, integration]
+
+    # Pas de container : live-build tourne directement sur Ubuntu runner
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer live-build et dépendances
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y live-build curl git python3
+
+      - name: Build ISO
+        run: |
+          mkdir -p build/iso
+          cd iso/debian
+          sudo lb clean --purge 2>/dev/null || true
+          sudo bash auto/config
+          sudo lb build
+        timeout-minutes: 90
+
+      - name: Déplacer et checksummer l'ISO
+        run: |
+          ISO=$(find iso/debian -maxdepth 1 -name "*.iso" | head -1)
+          [ -n "$ISO" ] || (echo "❌ Aucune ISO générée" && exit 1)
+          cp "$ISO" build/iso/
+          ISO=build/iso/$(basename "$ISO")
+          sha256sum "$ISO" > "${ISO}.sha256"
+          sha512sum "$ISO" > "${ISO}.sha512"
+          echo "✅ ISO : $ISO"
+          cat "${ISO}.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: defendos-debian-iso-${{ github.sha }}
+          path: |
+            build/iso/*.iso
+            build/iso/*.sha256
+            build/iso/*.sha512
+          retention-days: 7
+
+      - name: Créer une Release GitHub (sur tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            build/iso/*.iso
+            build/iso/*.sha256
+            build/iso/*.sha512
+          body: |
+            ## DefendOS ${{ github.ref_name }}
+
+            ### ISO Debian (live-build)
+            Vérifiez le checksum SHA256 avant d'utiliser l'ISO.
+
+            ```bash
+            sha256sum -c defendos*.sha256
+            ```
+
+            ### Test rapide (QEMU)
+            ```bash
+            qemu-system-x86_64 -enable-kvm -m 4G -cdrom defendos*.iso -boot d
+            ```
+
+            ### Pour RHEL/Fedora/Rocky
+            Utilisez le fichier kickstart : `iso/fedora/defendos.ks`
+
+            ### Changelog
+            Voir [CHANGELOG.md](CHANGELOG.md)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,192 @@
+# ============================================================
+# DefendOS – package list (live-build chroot)
+# Équivalent Debian/Ubuntu des paquets Arch + BlackArch
+# Tous les noms sont validés pour Debian 12 (Bookworm)
+# ============================================================
+
+# ── Base système ─────────────────────────────────────────────
+sudo
+policykit-1
+curl
+wget
+rsync
+ca-certificates
+gnupg
+lsb-release
+locales
+console-setup
+
+# ── Shell & utilitaires ──────────────────────────────────────
+zsh
+zsh-autosuggestions
+zsh-syntax-highlighting
+tmux
+neovim
+vim
+nano
+git
+htop
+btop
+tree
+jq
+unzip
+p7zip-full
+ripgrep
+fd-find
+bat
+fzf
+lsof
+strace
+ltrace
+
+# ── Réseau de base ───────────────────────────────────────────
+network-manager
+network-manager-gnome
+openssh-client
+openssh-server
+iw
+wireless-tools
+wpasupplicant
+dhcpcd5
+dnsmasq
+iproute2
+net-tools
+iputils-ping
+traceroute
+
+# ── Interface graphique (XFCE + LightDM) ─────────────────────
+xorg
+xinit
+x11-xserver-utils
+xserver-xorg-video-vesa
+xserver-xorg-video-fbdev
+xserver-xorg-input-libinput
+xfce4
+xfce4-goodies
+xfce4-terminal
+xfce4-notifyd
+lightdm
+lightdm-gtk-greeter
+lightdm-gtk-greeter-settings
+gvfs
+thunar-archive-plugin
+file-roller
+mousepad
+ristretto
+xarchiver
+pavucontrol
+blueman
+picom
+feh
+rofi
+dunst
+lxappearance
+
+# ── Thème & apparence ─────────────────────────────────────────
+arc-theme
+papirus-icon-theme
+fonts-dejavu
+fonts-liberation
+fonts-font-awesome
+fonts-noto
+fonts-noto-color-emoji
+
+# ── Navigateur & applications GUI ─────────────────────────────
+firefox-esr
+wireshark
+keepassxc
+
+# ── Éditeur de code ───────────────────────────────────────────
+# code (VS Code) : dépôt Microsoft requis – voir hook 9900
+# ghidra : téléchargement NSA requis – voir hook 9900
+
+# ── Sécurité : Pare-feu & durcissement ────────────────────────
+ufw
+gufw
+fail2ban
+apparmor
+apparmor-utils
+apparmor-profiles
+auditd
+audispd-plugins
+libpam-pwquality
+lynis
+rkhunter
+clamav
+clamav-daemon
+chkrootkit
+
+# ── Monitoring & logs ─────────────────────────────────────────
+syslog-ng
+logrotate
+lnav
+iotop
+nethogs
+iftop
+
+# ── IDS / NDR ─────────────────────────────────────────────────
+suricata
+# zeek : voir hook 9900 (dépôt externe)
+snort
+
+# ── Pentest – Outils en dépôts Debian ─────────────────────────
+nmap
+masscan
+nikto
+sqlmap
+hashcat
+john
+hydra
+medusa
+crunch
+netcat-openbsd
+socat
+proxychains4
+mitmproxy
+tcpdump
+tshark
+ngrep
+aircrack-ng
+hcxtools
+hcxdumptool
+
+# ── Forensics & reverse – dépôts Debian ──────────────────────
+sleuthkit
+foremost
+binwalk
+radare2
+gdb
+ltrace
+strace
+
+# ── Cryptographie ─────────────────────────────────────────────
+openssl
+gnupg
+hashdeep
+sslscan
+
+# ── Virtualisation / conteneurs ───────────────────────────────
+docker.io
+docker-compose
+qemu-system-x86
+libvirt-daemon-system
+virt-manager
+
+# ── Python & libs ────────────────────────────────────────────
+python3
+python3-pip
+python3-requests
+python3-scapy
+python3-impacket
+python3-cryptography
+python3-gi
+python3-gi-cairo
+gir1.2-gtk-3.0
+ipython3
+
+# ── Ruby ─────────────────────────────────────────────────────
+ruby
+ruby-dev
+
+# ── Wordlists ─────────────────────────────────────────────────
+wordlists
