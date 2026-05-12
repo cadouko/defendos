@@ -103,30 +103,42 @@ jobs:
           sudo lb bootstrap
           sudo lb chroot
         timeout-minutes: 90
-      - name: Patch lb_binary_syslinux for isolinux paths
+      - name: Debug bootloader state
         run: |
-          # lb_binary_syslinux hardcodes /root/isolinux/isolinux.bin as the source,
-          # but the isolinux package installs to /usr/lib/ISOLINUX/. Patch the script.
+          echo "=== config/bootloaders/ ==="
+          find iso/debian/config/bootloaders -type f 2>/dev/null || echo "(empty)"
+          echo "=== Host /usr/lib/ISOLINUX/ ==="
+          ls -la /usr/lib/ISOLINUX/isolinux.bin 2>/dev/null || echo "isolinux.bin not found on host"
+          echo "=== Host syslinux BIOS modules ==="
+          ls /usr/lib/syslinux/modules/bios/*.c32 2>/dev/null || echo "no c32 modules found"
+          echo "=== lb_binary_syslinux script ==="
           SCRIPT=$(find /usr/lib /usr/share -name "lb_binary_syslinux" -type f 2>/dev/null | head -1)
           if [ -n "$SCRIPT" ]; then
-            echo "Patching $SCRIPT"
-            sudo cp "$SCRIPT" "${SCRIPT}.bak"
-            # Show current isolinux-related lines for debugging
-            grep -n "isolinux\|vesamenu\|/root/" "$SCRIPT" || true
-            # Replace hardcoded /root/isolinux/ paths with package install paths
-            sudo sed -i 's|/root/isolinux/isolinux.bin|/usr/lib/ISOLINUX/isolinux.bin|g' "$SCRIPT"
-            sudo sed -i 's|/root/isolinux/vesamenu.c32|/usr/lib/syslinux/modules/bios/vesamenu.c32|g' "$SCRIPT"
-            echo "Patched $SCRIPT"
+            wc -l "$SCRIPT"
+            grep -n "isolinux\|vesamenu\|syslinux\|/root/\|/tmp/\|theme\|bootloader\|LB_SYSLINUX\|Chroot\|cp -a\|cp -L\|image" "$SCRIPT" || true
           else
-            echo "lb_binary_syslinux not found, checking known locations..."
-            ls -la /usr/lib/live/build/ 2>/dev/null || true
-            ls -la /usr/share/live/build/ 2>/dev/null || true
+            echo "lb_binary_syslinux not found"
+            find /usr/lib/live/build/ -type f 2>/dev/null | head -20 || true
+            find /usr/share/live/build/ -type f 2>/dev/null | head -20 || true
           fi
       - name: "Build ISO (stage 2: binary)"
         run: |
           cd iso/debian
-          sudo lb binary
+          sudo lb binary --debug 2>&1 | tee /tmp/lb-binary.log
+          RC=${PIPESTATUS[0]}
+          if [ $RC -ne 0 ]; then
+            echo "=== LAST 100 LINES OF BUILD LOG ==="
+            tail -100 /tmp/lb-binary.log
+            exit $RC
+          fi
         timeout-minutes: 30
+      - name: Upload build log (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ github.sha }}
+          path: /tmp/lb-binary.log
+          retention-days: 7
       - name: Checksum ISO
         run: |
           ISO=$(find iso/debian -maxdepth 1 -name "*.iso" | head -1)

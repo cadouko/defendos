@@ -9,6 +9,7 @@ sudo
 policykit-1
 linux-image-amd64
 isolinux
+syslinux-common
 curl
 wget
 rsync

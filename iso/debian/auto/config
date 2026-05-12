@@ -11,6 +11,7 @@ lb config \
     --apt-indices false \
     --apt-recommends false \
     --apt-source-archives false \
+    --syslinux-theme live-build \
     \
     --bootappend-live \
         "boot=live components quiet splash \
@@ -36,3 +37,35 @@ lb config \
     --checksums sha256 \
     \
     "${@}"
+
+#
+# Post-config: populate bootloader files from host system packages.
+# lb_binary_syslinux with --syslinux-theme live-build copies from
+# config/bootloaders/isolinux/.  The live-build package ships zero-byte
+# stubs, so we replace them with the real binaries installed on the host.
+#
+mkdir -p config/bootloaders/isolinux
+
+_installed_bootloader_files()
+{
+	# Copy isolinux.bin from the ISOLINUX package (host)
+	if [ -f /usr/lib/ISOLINUX/isolinux.bin ]
+	then
+		cp -aL /usr/lib/ISOLINUX/isolinux.bin config/bootloaders/isolinux/
+	fi
+
+	# Copy all syslinux BIOS modules (vesamenu.c32, etc.)
+	if [ -d /usr/lib/syslinux/modules/bios ]
+	then
+		cp -aL /usr/lib/syslinux/modules/bios/*.c32 \
+			config/bootloaders/isolinux/ 2>/dev/null || true
+	fi
+}
+
+_installed_bootloader_files
+
+# Warn if isolinux.bin is still missing (the live-build stub is 0 bytes)
+if [ ! -s config/bootloaders/isolinux/isolinux.bin ]
+then
+	echo "WARNING: isolinux.bin not found on host (0-byte stub may be used)" >&2
+fi

@@ -38,13 +38,14 @@ check-distro: ## Vérifier la compatibilité de la distribution
 install-deps: check-distro ## Installer les dépendances de build
 	@echo -e "$(GREEN)[+]$(NC) Installation des dépendances..."
 	@if command -v apt-get >/dev/null 2>&1; then \
-		apt-get install -y live-build shellcheck python3 curl git; \
+		apt-get install -y live-build shellcheck python3 curl git isolinux syslinux-common; \
 	elif command -v dnf >/dev/null 2>&1; then \
 		dnf install -y livecd-tools lorax shellcheck python3 curl git; \
 		echo -e "$(YELLOW)[!]$(NC) Pour Fedora, utilisez 'make iso-fedora' (livecd-creator)"; \
 	else \
 		echo -e "$(YELLOW)[!]$(NC) Gestionnaire de paquets non reconnu, installez manuellement :"; \
-		echo "     live-build (Debian) ou livecd-tools (Fedora)"; \
+		echo "     live-build shellcheck python3 curl git"; \
+		echo "     isolinux syslinux-common (pour les fichiers d'amorçage)"; \
 	fi
 
 lint: ## Vérifier la syntaxe des scripts (shellcheck + python)

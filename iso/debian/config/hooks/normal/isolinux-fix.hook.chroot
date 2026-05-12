@@ -1,11 +1,18 @@
 #!/bin/sh
-# Pre-populate /root/isolinux/ for lb_binary_syslinux
-# On Debian Bookworm, isolinux.bin is in /usr/lib/ISOLINUX/ and
-# vesamenu.c32 is in /usr/lib/syslinux/modules/bios/
-mkdir -p /root/isolinux
+# Pre-populate the syslinux theme directory for lb_binary_syslinux.
+# The syslinux-themes-debian package does not exist in Debian Bookworm,
+# so we create the directory structure manually from installed packages.
+# This hook is a fallback; auto/config now uses --syslinux-theme live-build
+# and populates config/bootloaders/isolinux/ on the host side.
+mkdir -p /usr/share/syslinux/themes/debian/isolinux-live
 if [ -f /usr/lib/ISOLINUX/isolinux.bin ]; then
-    cp /usr/lib/ISOLINUX/isolinux.bin /root/isolinux/
+    cp -a /usr/lib/ISOLINUX/isolinux.bin /usr/share/syslinux/themes/debian/isolinux-live/isolinux.bin
 fi
 if [ -f /usr/lib/syslinux/modules/bios/vesamenu.c32 ]; then
-    cp /usr/lib/syslinux/modules/bios/vesamenu.c32 /root/isolinux/
+    cp -a /usr/lib/syslinux/modules/bios/vesamenu.c32 /usr/share/syslinux/themes/debian/isolinux-live/vesamenu.c32
 fi
+for mod in ldlinux.c32 libutil.c32 libcom32.c32 reboot.c32 poweroff.c32; do
+    if [ -f "/usr/lib/syslinux/modules/bios/$mod" ]; then
+        cp -a "/usr/lib/syslinux/modules/bios/$mod" "/usr/share/syslinux/themes/debian/isolinux-live/$mod"
+    fi
+done
