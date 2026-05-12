@@ -95,14 +95,33 @@ jobs:
           else
             echo "lb_chroot_linux-image not found, assuming step is already disabled"
           fi
-      - name: Build ISO
+      - name: Build ISO (stage 1: bootstrap + chroot)
         run: |
-          mkdir -p build/iso
           cd iso/debian
           sudo lb clean --purge 2>/dev/null || true
           sudo bash auto/config
-          sudo lb build
+          sudo lb bootstrap
+          sudo lb chroot
         timeout-minutes: 90
+      - name: Inject isolinux files for binary syslinux stage
+        run: |
+          cd iso/debian
+          # Install isolinux package in chroot and pre-populate /root/isolinux/
+          sudo chroot chroot apt-get install -y isolinux 2>/dev/null || true
+          sudo mkdir -p chroot/root/isolinux
+          if [ -f chroot/usr/lib/ISOLINUX/isolinux.bin ]; then
+            sudo cp chroot/usr/lib/ISOLINUX/isolinux.bin chroot/root/isolinux/
+          fi
+          if [ -f chroot/usr/lib/syslinux/modules/bios/vesamenu.c32 ]; then
+            sudo cp chroot/usr/lib/syslinux/modules/bios/vesamenu.c32 chroot/root/isolinux/
+          fi
+          echo "isolinux files prepared:"
+          ls -la chroot/root/isolinux/ 2>/dev/null || echo "WARNING: /root/isolinux/ empty"
+      - name: Build ISO (stage 2: binary)
+        run: |
+          cd iso/debian
+          sudo lb binary
+        timeout-minutes: 30
       - name: Checksum ISO
         run: |
           ISO=$(find iso/debian -maxdepth 1 -name "*.iso" | head -1)
