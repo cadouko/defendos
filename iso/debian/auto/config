@@ -18,8 +18,7 @@ lb config \
          toram \
          systemd.unified_cgroup_hierarchy=1" \
     \
-    --debian-installer none \
-    --debian-installer-distribution bookworm \
+    --debian-installer false \
     \
     --iso-application "DefendOS - Cybersecurity Live OS" \
     --iso-publisher "DefendOS Project" \
