@@ -103,26 +103,25 @@ jobs:
           sudo lb bootstrap
           sudo lb chroot
         timeout-minutes: 90
-      - name: Inject isolinux files for binary syslinux stage
+      - name: Patch lb_binary_syslinux for isolinux paths
         run: |
-          # lb_binary_syslinux runs on the host and looks for files at /root/isolinux/
-          # Find isolinux.bin and vesamenu.c32 from installed packages
-          sudo mkdir -p /root/isolinux
-          ISOLINUX_BIN=$(find /usr/lib -name "isolinux.bin" 2>/dev/null | head -1)
-          VESAMENU_C32=$(find /usr/lib -name "vesamenu.c32" 2>/dev/null | head -1)
-          if [ -n "$ISOLINUX_BIN" ]; then
-            sudo cp "$ISOLINUX_BIN" /root/isolinux/
-            echo "Copied $ISOLINUX_BIN"
+          # lb_binary_syslinux hardcodes /root/isolinux/isolinux.bin as the source,
+          # but the isolinux package installs to /usr/lib/ISOLINUX/. Patch the script.
+          SCRIPT=$(find /usr/lib /usr/share -name "lb_binary_syslinux" -type f 2>/dev/null | head -1)
+          if [ -n "$SCRIPT" ]; then
+            echo "Patching $SCRIPT"
+            sudo cp "$SCRIPT" "${SCRIPT}.bak"
+            # Show current isolinux-related lines for debugging
+            grep -n "isolinux\|vesamenu\|/root/" "$SCRIPT" || true
+            # Replace hardcoded /root/isolinux/ paths with package install paths
+            sudo sed -i 's|/root/isolinux/isolinux.bin|/usr/lib/ISOLINUX/isolinux.bin|g' "$SCRIPT"
+            sudo sed -i 's|/root/isolinux/vesamenu.c32|/usr/lib/syslinux/modules/bios/vesamenu.c32|g' "$SCRIPT"
+            echo "Patched $SCRIPT"
           else
-            echo "WARNING: isolinux.bin not found"
+            echo "lb_binary_syslinux not found, checking known locations..."
+            ls -la /usr/lib/live/build/ 2>/dev/null || true
+            ls -la /usr/share/live/build/ 2>/dev/null || true
           fi
-          if [ -n "$VESAMENU_C32" ]; then
-            sudo cp "$VESAMENU_C32" /root/isolinux/
-            echo "Copied $VESAMENU_C32"
-          else
-            echo "WARNING: vesamenu.c32 not found"
-          fi
-          sudo ls -la /root/isolinux/
       - name: "Build ISO (stage 2: binary)"
         run: |
           cd iso/debian
