@@ -128,7 +128,7 @@ iftop
 # ── IDS / NDR ─────────────────────────────────────────────────
 suricata
 # zeek : voir hook 9900 (dépôt externe)
-snort
+# snort : removed from Debian Bookworm (licensing); use suricata instead
 
 # ── Pentest – Outils en dépôts Debian ─────────────────────────
 nmap
@@ -155,7 +155,6 @@ hcxdumptool
 sleuthkit
 foremost
 binwalk
-radare2
 gdb
 
 # ── Cryptographie ─────────────────────────────────────────────
@@ -187,4 +186,4 @@ ruby
 ruby-dev
 
 # ── Wordlists ─────────────────────────────────────────────────
-wordlists
+# wordlists : not available in Debian Bookworm; install manually or add external repo
