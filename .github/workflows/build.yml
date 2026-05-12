@@ -79,7 +79,7 @@ jobs:
       - name: Install live-build
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y live-build curl git python3 debian-archive-keyring
+          sudo apt-get install -y live-build curl git python3 debian-archive-keyring syslinux syslinux-common
           sudo ln -sf /usr/share/keyrings/debian-archive-keyring.gpg /usr/share/keyrings/ubuntu-keyring.gpg
       - name: Patch lb_chroot_linux-image for Bookworm
         run: |
