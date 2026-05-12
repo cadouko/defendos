@@ -79,7 +79,7 @@ jobs:
       - name: Install live-build
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y live-build curl git python3 debian-archive-keyring syslinux syslinux-common
+          sudo apt-get install -y live-build curl git python3 debian-archive-keyring syslinux syslinux-common isolinux
           sudo ln -sf /usr/share/keyrings/debian-archive-keyring.gpg /usr/share/keyrings/ubuntu-keyring.gpg
       - name: Patch lb_chroot_linux-image for Bookworm
         run: |
@@ -106,17 +106,23 @@ jobs:
       - name: Inject isolinux files for binary syslinux stage
         run: |
           # lb_binary_syslinux runs on the host and looks for files at /root/isolinux/
-          # Install isolinux on the host so we have the files available
-          sudo apt-get install -y isolinux syslinux-common 2>/dev/null || true
+          # Find isolinux.bin and vesamenu.c32 from installed packages
           sudo mkdir -p /root/isolinux
-          if [ -f /usr/lib/ISOLINUX/isolinux.bin ]; then
-            sudo cp /usr/lib/ISOLINUX/isolinux.bin /root/isolinux/
+          ISOLINUX_BIN=$(find /usr/lib -name "isolinux.bin" 2>/dev/null | head -1)
+          VESAMENU_C32=$(find /usr/lib -name "vesamenu.c32" 2>/dev/null | head -1)
+          if [ -n "$ISOLINUX_BIN" ]; then
+            sudo cp "$ISOLINUX_BIN" /root/isolinux/
+            echo "Copied $ISOLINUX_BIN"
+          else
+            echo "WARNING: isolinux.bin not found"
           fi
-          if [ -f /usr/lib/syslinux/modules/bios/vesamenu.c32 ]; then
-            sudo cp /usr/lib/syslinux/modules/bios/vesamenu.c32 /root/isolinux/
+          if [ -n "$VESAMENU_C32" ]; then
+            sudo cp "$VESAMENU_C32" /root/isolinux/
+            echo "Copied $VESAMENU_C32"
+          else
+            echo "WARNING: vesamenu.c32 not found"
           fi
-          echo "isolinux files prepared:"
-          ls -la /root/isolinux/ 2>/dev/null || echo "WARNING: /root/isolinux/ empty"
+          ls -la /root/isolinux/
       - name: "Build ISO (stage 2: binary)"
         run: |
           cd iso/debian
