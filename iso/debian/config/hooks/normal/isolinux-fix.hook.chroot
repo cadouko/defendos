@@ -1,0 +1,11 @@
+#!/bin/sh
+# Pre-populate /root/isolinux/ for lb_binary_syslinux
+# On Debian Bookworm, isolinux.bin is in /usr/lib/ISOLINUX/ and
+# vesamenu.c32 is in /usr/lib/syslinux/modules/bios/
+mkdir -p /root/isolinux
+if [ -f /usr/lib/ISOLINUX/isolinux.bin ]; then
+    cp /usr/lib/ISOLINUX/isolinux.bin /root/isolinux/
+fi
+if [ -f /usr/lib/syslinux/modules/bios/vesamenu.c32 ]; then
+    cp /usr/lib/syslinux/modules/bios/vesamenu.c32 /root/isolinux/
+fi
