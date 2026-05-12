@@ -95,7 +95,7 @@ jobs:
           else
             echo "lb_chroot_linux-image not found, assuming step is already disabled"
           fi
-      - name: Build ISO (stage 1: bootstrap + chroot)
+      - name: "Build ISO (stage 1: bootstrap + chroot)"
         run: |
           cd iso/debian
           sudo lb clean --purge 2>/dev/null || true
@@ -117,7 +117,7 @@ jobs:
           fi
           echo "isolinux files prepared:"
           ls -la chroot/root/isolinux/ 2>/dev/null || echo "WARNING: /root/isolinux/ empty"
-      - name: Build ISO (stage 2: binary)
+      - name: "Build ISO (stage 2: binary)"
         run: |
           cd iso/debian
           sudo lb binary
