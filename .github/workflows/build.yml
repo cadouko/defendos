@@ -122,7 +122,7 @@ jobs:
           else
             echo "WARNING: vesamenu.c32 not found"
           fi
-          ls -la /root/isolinux/
+          sudo ls -la /root/isolinux/
       - name: "Build ISO (stage 2: binary)"
         run: |
           cd iso/debian
