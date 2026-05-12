@@ -106,17 +106,18 @@ jobs:
       - name: Inject isolinux files for binary syslinux stage
         run: |
           cd iso/debian
-          # Install isolinux package in chroot and pre-populate /root/isolinux/
-          sudo chroot chroot apt-get install -y isolinux 2>/dev/null || true
-          sudo mkdir -p chroot/root/isolinux
+          # Install isolinux and syslinux-common in the chroot so files exist
+          sudo chroot chroot apt-get install -y isolinux syslinux-common 2>/dev/null || true
+          # lb_binary_syslinux expects files at /root/isolinux/ on the HOST filesystem
+          sudo mkdir -p /root/isolinux
           if [ -f chroot/usr/lib/ISOLINUX/isolinux.bin ]; then
-            sudo cp chroot/usr/lib/ISOLINUX/isolinux.bin chroot/root/isolinux/
+            sudo cp chroot/usr/lib/ISOLINUX/isolinux.bin /root/isolinux/
           fi
           if [ -f chroot/usr/lib/syslinux/modules/bios/vesamenu.c32 ]; then
-            sudo cp chroot/usr/lib/syslinux/modules/bios/vesamenu.c32 chroot/root/isolinux/
+            sudo cp chroot/usr/lib/syslinux/modules/bios/vesamenu.c32 /root/isolinux/
           fi
           echo "isolinux files prepared:"
-          ls -la chroot/root/isolinux/ 2>/dev/null || echo "WARNING: /root/isolinux/ empty"
+          ls -la /root/isolinux/ 2>/dev/null || echo "WARNING: /root/isolinux/ empty"
       - name: "Build ISO (stage 2: binary)"
         run: |
           cd iso/debian
